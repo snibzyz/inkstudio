@@ -1,0 +1,12 @@
+{
+  "name": "inkstudio-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @inkstudio/desktop-shell dev",
+    "build": "pnpm --filter @inkstudio/desktop-shell build",
+    "typecheck": "pnpm --filter @inkstudio/desktop-shell typecheck",
+    "package:win": "pnpm --filter @inkstudio/desktop-shell package:win",
+    "publish:win": "pnpm --filter @inkstudio/desktop-shell publish:win",
+    "package:mac": "pnpm --filter @inkstudio/desktop-shell package:mac"
+  }
+}
