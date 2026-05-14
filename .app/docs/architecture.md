@@ -305,26 +305,67 @@ pnpm publish:mac         # DMG + publish
 
 ## 9. Render port roadmap
 
-โมดูล render ตอนนี้เป็น UI placeholder. การ port full feature จาก INKIDEA แบ่ง 3 phase:
+**Phase A — Renderer-side (เสร็จ ✓)**
+- Fork ไฟล์ render module 12 ตัวจาก INKIDEA workspace/render
+- เปลี่ยน IPC namespace: `window.electron.ipc.*` → `window.inkstudio.render.*` ผ่าน `electronIpcShim`
+- ลบ machine preset / encoding section / preset save-load — fix profile เป็น 144p · 1 fps · CRF 51 · Software H.264 · ultrafast
+- เพิ่ม `introClipPath` state + UI picker ใน RenderSourceSection — persist ลง localStorage
+- เปลี่ยน sections 7 → 4 (Overview / Source / Files / Render) + QuickActions
 
-**Phase A — Renderer-side state + UI (no FFmpeg)**
-- Port `useRender.ts` (372 บรรทัด) → strip `appliedProjectId` / `resetForActiveProject` (workspace concepts)
-- Port `useRenderJob.ts` (291 บรรทัด) → เปลี่ยน `window.electron.ipc.*` → `window.inkstudio.render.*`
-- Port `renderConstants.ts` + `renderTypes.ts` → เปลี่ยน `STORAGE_KEY: 'inkidea:render:v1'` → `'inkstudio:render:v1'`
-- Port sections 7 ตัว → ใช้ AppButton/MacPanel แทน `HubIdeSettingsShell` / `hubSettingsInputClass`
+**Phase B — Main-side FFmpeg + IPC (TODO)**
 
-**Phase B — Main-side FFmpeg + IPC**
-- เขียน `electron/ipc/render.cjs`:
-  - implement `render:start-batch-cover` ใช้ `child_process.spawn(ffmpegPath, [...])`
-  - parse progress จาก ffmpeg stderr → emit `render:progress` event
-  - `render:cancel-job` → `proc.kill('SIGKILL')`
-- bundle `ffmpeg-static` (npm) — resolve path ตอน packaged ผ่าน `process.resourcesPath`
-- เขียน preset store ใน `userData/render-presets.json` (`preset:list/save/delete`)
+implement handlers ใน `electron/ipc/render.cjs`:
+
+```js
+// render:startBatch
+// receives: { jobId, coverPath|coverFolder, useMultipleCovers, audioFolder,
+//             selectedAudioFiles, outputFolder, titlePrefix, introClipPath?,
+//             encodeOption, crfValue, resolutionLabel, fps, preset, overwriteMode }
+
+for (const audioName of selectedAudioFiles) {
+  const cover = resolveCover(audioName)  // single หรือ match name ใน coverFolder
+  const out = path.join(outputFolder, `${titlePrefix}${baseName(audioName)}.mp4`)
+  const args = [
+    '-y',
+    // ── intro (เสริม) ──
+    ...(introClipPath ? ['-i', introClipPath] : []),
+    // ── ภาพปก static ──
+    '-loop', '1', '-framerate', String(fps),  // fps = 1
+    '-i', cover,
+    // ── เสียง ──
+    '-i', path.join(audioFolder, audioName),
+    // ── filter: concat intro+ปก ถ้ามี intro ──
+    ...(introClipPath ? [
+      '-filter_complex',
+      '[0:v]scale=256:144,setsar=1,fps=1[v0];' +
+      '[1:v]scale=256:144,setsar=1,fps=1[v1];' +
+      '[v0][0:a][v1][2:a]concat=n=2:v=1:a=1[v][a]',
+      '-map', '[v]', '-map', '[a]',
+    ] : [
+      '-vf', 'scale=256:144,setsar=1',
+      '-map', '0:v:0', '-map', '1:a:0',  // หรือ 0:v / 1:a ตาม index
+    ]),
+    // ── encode: libx264 ultrafast CRF 51 (เร็วสุด ไฟล์เล็กสุด) ──
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(crfValue),  // 51
+    '-pix_fmt', 'yuv420p', '-r', String(fps),  // 1 fps
+    '-c:a', 'aac', '-b:a', '96k', '-ar', '44100',
+    '-shortest', '-movflags', '+faststart',
+    out,
+  ]
+  const proc = spawn(ffmpegPath, args)
+  proc.stderr.on('data', (chunk) => {
+    // parse "frame=N fps=N time=HH:MM:SS.ms bitrate=N kbps"
+    // emit render:progress to renderer
+  })
+  // proc.kill('SIGKILL') ตอน render:cancelJob
+}
+```
 
 **Phase C — Verify**
 - smoke test: 1 cover + 1 short audio file → mp4 ที่ play ได้
-- verify NVENC fallback to Software เมื่อ GPU ไม่รองรับ
-- progress event ถ่ายทอดถูก (ดู INKIDEA `useRenderJob.ts` payload shape)
+- verify ขนาดไฟล์ < 50 KB ต่อนาทีเสียง (เพราะ video stream ที่ 1 fps + CRF 51 เล็กมาก)
+- progress event ถ่ายทอดถูก (ดู `useRenderJob.ts` payload shape)
+- intro clip concat: verify timing สอดคล้อง + frame rate consistent
 
 ## 10. Conventions (inherited จาก workspace root CLAUDE.md)
 

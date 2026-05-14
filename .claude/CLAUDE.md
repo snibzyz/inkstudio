@@ -123,8 +123,9 @@ features/
 | `settings` | get, patch, setKey, reset, onChange | wired |
 | `log` | info, warn, error, debug, getLogPath | wired |
 | `shell` | showItemInFolder, beep | wired |
-| `render` | startBatchCoverRender, cancelRenderJob, onProgress, listPresets, savePreset, deletePreset, listAudioFiles, getPreferredEncoder | **TODO** (ดู `src/features/render/README.md`) |
+| `render` | checkFfmpeg, listAudioFiles, getPreferredEncoder, startBatch, cancelJob, onProgress | preload wired · main process IPC handlers **TODO** (ดู `.app/docs/architecture.md` § 9 Phase B) |
 | `cover` | (script save/load ใช้ localStorage — ไม่ต้องการ IPC) | n/a |
+| (legacy compat) | `window.electron.ipc.*` — INKIDEA-style surface | shimmed via `state/electronIpcShim.ts` → maps to `window.inkstudio.*`; presets ใช้ localStorage |
 
 ## 7. Auto-Update — NSIS + electron-updater
 
@@ -145,10 +146,13 @@ GitHub repo: `snibzyz/inkstudio` (ยังไม่สร้าง · ตั้
 ```bash
 pnpm dev                  # Vite (5573) + Electron พร้อมกัน
 pnpm typecheck            # ตรวจ TS — ปัจจุบันผ่าน
-pnpm test                 # vitest run — 8/8 ผ่าน (coverRender pure functions)
-pnpm build                # vite build → dist/ — 67 modules, 197 KB JS, 45 KB CSS
+pnpm test                 # vitest run — 106/106 ผ่าน
+                          #   coverEditorUtils (35) · useRender (18) · electronIpcShim (22)
+                          #   useHubWorkspace (14) · renderConstants (9) · useApp/useStudio (8)
+pnpm build                # vite build → dist/ — ~1700 modules, ~640 KB JS, ~77 KB CSS
 
-pnpm package:win          # NSIS installer → release/INKSTUDIO-Setup-0.1.0.exe (82 MB)
+pnpm package:win          # NSIS + Portable → release/INKSTUDIO-Setup-0.1.0.exe (~106 MB)
+                          #                  release/INKSTUDIO-Portable-0.1.0.exe (~106 MB)
 pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TOKEN)
 ```
 
@@ -183,14 +187,36 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
 
 ## 12. การเปลี่ยนแปลงล่าสุด
 
+### 2026-05-15
+
+- **Fork ทั้ง Cover + Render module จาก INKIDEA** — ลบของเก่าทิ้ง (CoverCanvas Canvas2D 1437 บรรทัด + WIP fabric/ folder)
+  - Cover: 16 ไฟล์ (~4378 LOC) — Fabric.js artboard + zoom/pan/smart-guides
+  - Render: 12 ไฟล์ (~2262 LOC) → ลดเหลือ 4 sections + locked profile
+- **Render profile fix** — 144p · 1 fps · CRF 51 · libx264 ultrafast · AAC 96 kbps (เร็วสุด ไฟล์เล็กสุด ทุกเครื่อง)
+  - ลบ machine preset / encoding section / preset save-load
+  - เพิ่ม **intro clip** picker — แทรกวิดีโอหน้าทุกตอน (ไม่บังคับ)
+- **Photoshop UX บนแคนวาส**:
+  - Pan: Space+drag, middle-mouse drag, **H key persistent hand tool**, V key exit
+  - Cursor: open hand (`grab`) ตอน Space, closed hand (`grabbing`) ตอนลาก, `copy` ตอน Alt, `zoom-in/out` ตอน Ctrl+scroll
+  - **Alt+drag = duplicate** (pre-clone cache + swap into stack on first object:moving)
+  - Window:blur safety + document.body cursor ตอน drag เผื่อลากออกนอก host
+  - Keyboard: Ctrl+0 fit / Ctrl+1 100% / Ctrl+± zoom / Ctrl+Z/Y / Ctrl+T / Ctrl+J / Delete / arrows (1px) / Shift+arrows (10px) / Ctrl+] / Ctrl+[ / Ctrl+Shift+] / [ / Ctrl+A / Ctrl+D / Esc
+- **Infra**: 
+  - Copy `@shared/ui` ทั้ง 40 ไฟล์จาก INKIDEA → `src/shared-ui/` + alias `@shared/ui` ใน vite/tsconfig
+  - `useHubWorkspace` shim — INKSTUDIO ไม่มี workspace; map ไป `window.inkstudio.fs/shell`
+  - `electronIpcShim` — `window.electron.ipc.*` (INKIDEA-style) → `window.inkstudio.*`; presets ใช้ localStorage
+  - Render IPC contract เพิ่ม `introClipPath`, `fps`, `preset` fields
+- **Tests — 106 passing**: coverEditorUtils (35) · useRender (18) · electronIpcShim (22) · useHubWorkspace (14) · renderConstants (9) · useApp/useStudio (8)
+- **Build verified**: typecheck pass · vite build 1697 modules · NSIS + Portable installer ~106 MB
+- **Docs**: README.md + architecture.md + CLAUDE.md updated to match new state
+
 ### 2026-05-13
 
 - สร้าง app จาก `.shared/` template (port 5573 + namespace `window.inkstudio`)
 - ทำ 2-sidebar shell (ปก / คลิป) เลียนแบบ INK family
-- เขียน cover module ครบ — canvas 1280×720, blur bg, foreground cover, title + chapter text layers, batch export พร้อม auto-numbering
-- เขียน vitest unit tests สำหรับ pure functions (8/8 ผ่าน)
+- เขียน cover module เวอร์ชันแรก — canvas 1280×720, blur bg, foreground cover, title + chapter text layers, batch export พร้อม auto-numbering (ของเก่า — ภายหลังถูก fork จาก INKIDEA ทับใน 2026-05-15)
+- เขียน vitest unit tests สำหรับ pure functions
 - สร้าง useStudio cross-module store เพื่อ sync cover output → render input
 - เปลี่ยน electron-builder จาก portable → NSIS + electron-updater
 - ลบ `portableUpdate.cjs` (เก่า) · เขียน `autoUpdate.cjs` ใหม่บน electron-updater
 - เขียน README.md (Thai user doc) + `.app/docs/architecture.md` (technical)
-- Render module: UI placeholder + roadmap ครบใน `features/render/README.md`

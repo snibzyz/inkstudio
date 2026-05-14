@@ -12,11 +12,11 @@
 2. [โฟลเดอร์ต่าง ๆ — วางไฟล์อะไรที่ไหน](#โฟลเดอร์ต่าง-ๆ--วางไฟล์อะไรที่ไหน)
 3. [ขั้นตอนภาพรวม](#ขั้นตอนภาพรวม)
 4. [โมดูล "ทำปก"](#โมดูล-ทำปก)
-5. [โมดูล "เรนเดอร์คลิป"](#โมดูล-เรนเดอร์คลิป)
-6. [Auto-numbering — token `{n}`](#auto-numbering--token-n)
-7. [Sync ปก → คลิป](#sync-ปก--คลิป)
-8. [Machine preset — กาก/กลาง/เทพ](#machine-preset--กากกลางเทพ)
-9. [Script (preset) save/load](#script-preset-saveload)
+5. [Photoshop shortcuts บนแคนวาส](#photoshop-shortcuts-บนแคนวาส)
+6. [โมดูล "เรนเดอร์คลิป"](#โมดูล-เรนเดอร์คลิป)
+7. [Auto-numbering — token `{n}`](#auto-numbering--token-n)
+8. [Sync ปก → คลิป](#sync-ปก--คลิป)
+9. [Script ของโมดูลทำปก](#script-ของโมดูลทำปก)
 10. [อัปเดตอัตโนมัติ](#อัปเดตอัตโนมัติ)
 11. [คุณสมบัติ standalone](#คุณสมบัติ-standalone)
 12. [แก้ปัญหาที่พบบ่อย](#แก้ปัญหาที่พบบ่อย)
@@ -88,9 +88,9 @@ flowchart TD
     Covers -->|"sync auto"| Render["โมดูล &quot;เรนเดอร์คลิป&quot;"]
 
     Render --> AudioPick["เลือกโฟลเดอร์เสียง<br/>จาก INKTTS"]
-    AudioPick --> Encoder["เลือก encoder + CRF + res<br/>หรือใช้ machine preset"]
-    Encoder --> Files["เลือกไฟล์เสียง<br/>ที่จะเรนเดอร์"]
-    Files --> RunR["กด &quot;เริ่มเรนเดอร์&quot;"]
+    AudioPick --> Intro["(เสริม) เลือก<br/>อินโทรวิดีโอ"]
+    Intro --> Files["เลือกไฟล์เสียง<br/>ที่จะเรนเดอร์"]
+    Files --> RunR["กด &quot;เริ่มเรนเดอร์&quot;<br/>(144p · 1 fps · ultrafast)"]
     RunR --> Clips[("คลิป .mp4 ครบทุกตอน<br/>พร้อม upload")]
 
     INKTTS(["INKTTS<br/>แปลงข้อความ-เสียง"]) -.->|".m4a"| AudioPick
@@ -100,7 +100,7 @@ flowchart TD
     classDef result fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
     classDef external fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#581c87
 
-    class Upload,Title,Range,ExportC,AudioPick,Encoder,Files,RunR step
+    class Upload,Title,Range,ExportC,AudioPick,Intro,Files,RunR step
     class Cover,Render tool
     class Covers,Clips result
     class INKTTS external
@@ -150,20 +150,108 @@ flowchart LR
 
 ---
 
+## Photoshop shortcuts บนแคนวาส
+
+แคนวาสของโมดูล "ทำปก" ใช้ Fabric.js + viewport แบบ Photoshop — คนคุ้น Photoshop เข้ามาทำงานได้เลย
+
+### มุมมอง (Pan / Zoom)
+
+| ทำอะไร | ปุ่ม |
+|---|---|
+| Pan ชั่วคราว | `Space` + ลากเมาส์ |
+| Pan แบบไม่กดค้าง | คลิกค้างปุ่มกลางเมาส์ (MMB) แล้วลาก |
+| Hand tool ค้างถาวร | กด `H` (กด `V` หรือ `Esc` เพื่อออก) |
+| Zoom ที่ตำแหน่งเมาส์ | `Ctrl` + scroll |
+| Zoom in / out 10% | `Ctrl` + `=` / `Ctrl` + `-` |
+| **Fit on Screen** | `Ctrl + 0` |
+| **Actual Pixels (100%)** | `Ctrl + 1` |
+
+> Cursor เปลี่ยนตามโหมด: มือเปิด `grab` ตอน Space, มือกำ `grabbing` ตอนลาก, แว่นขยาย `zoom-in/out` ตอน Ctrl+scroll, `copy` ตอนกด Alt ค้าง
+
+### ประวัติ + Transform
+
+| ทำอะไร | ปุ่ม |
+|---|---|
+| Undo | `Ctrl + Z` |
+| Redo | `Ctrl + Shift + Z` หรือ `Ctrl + Y` |
+| Free Transform | `Ctrl + T` |
+
+### Selection
+
+| ทำอะไร | ปุ่ม |
+|---|---|
+| ยกเลิกเลือก | `Esc` หรือ `Ctrl + D` |
+| เลือกทั้งหมด (ยกเว้นพื้นหลัง) | `Ctrl + A` |
+
+### Layer
+
+| ทำอะไร | ปุ่ม |
+|---|---|
+| ลบเลเยอร์ที่เลือก | `Delete` / `Backspace` |
+| ทำสำเนา | `Ctrl + J` |
+| **Alt + ลาก** | ทำสำเนาตอนลาก (ของเดิมอยู่ที่เดิม) |
+| ขึ้นหน้า / ลงหลัง | `Ctrl + ]` / `Ctrl + [` |
+| บนสุด / ล่างสุด | `Ctrl + Shift + ]` / `Ctrl + Shift + [` |
+
+### Nudge (ขยับทีละ pixel)
+
+| ทำอะไร | ปุ่ม |
+|---|---|
+| ขยับ 1 px | `↑` `↓` `←` `→` |
+| ขยับ 10 px | `Shift + ↑` ฯลฯ |
+
+---
+
 ## โมดูล "เรนเดอร์คลิป"
 
 แท็บที่สองใน sidebar — combine ปก + ไฟล์เสียง → .mp4 ผ่าน FFmpeg (bundle มาในแอป)
 
-### ขั้นตอน (6 sections ใน sidebar ของโมดูล)
+### โปรไฟล์ฟิกซ์ — เร็วสุด ทรัพยากรน้อยสุด
+
+INKSTUDIO **ไม่ให้เลือก resolution / encoder / CRF** — ฟิกซ์ที่ค่าเดียวเพื่อให้ทำงานเร็วสุด ทรัพยากร CPU น้อยสุด ไฟล์เล็กสุด
+
+| ค่า | สเปก | เหตุผล |
+|---|---|---|
+| **Resolution** | `144p` (256×144) | ภาพนิ่งจริง ๆ — YouTube จะ re-encode ทุก resolution ตอน upload อยู่แล้ว |
+| **Framerate** | `1 fps` | ไม่มีการเคลื่อนไหว — 1 fps เพียงพอ + video stream เล็กกว่ามาก |
+| **Codec** | `libx264` (Software H.264) | ไม่ต้องพึ่ง GPU — ทำงานได้ทุกเครื่อง |
+| **CRF** | `51` (แย่สุดที่ x264 รองรับ) | เป็นภาพนิ่ง compression อัตราสูงไม่เห็นความต่าง |
+| **Preset** | `ultrafast` | speed สูงสุดของ x264 — CPU ทำงานน้อยสุด |
+| **Audio** | `AAC 96 kbps · 44.1 kHz` | bitrate ต่ำ ฟังตามปกติ |
+
+### ขั้นตอน (4 sections ใน sidebar ของโมดูล)
 
 | ขั้น | section | ทำอะไร |
 |:---:|---|---|
-| — | **ภาพรวม** | แสดงสถานะ FFmpeg + flow ภาพรวม |
-| 1 | **แหล่งข้อมูล** | ปกเดียวหรือโฟลเดอร์ปก · โฟลเดอร์ไฟล์เสียง · ปลายทาง · คำนำหน้า |
-| 2 | **การเข้ารหัส** | Encoder · CRF (18–30) · resolution (480p/720p/1080p) |
-| 3 | **พรีเซ็ต** | Machine preset (กาก/กลาง/เทพ) + custom preset |
-| 4 | **ไฟล์เสียง** | เลือกไฟล์เสียงทีละไฟล์หรือทั้งหมด · search filter |
-| 5 | **เรนเดอร์** | เริ่ม · ดู progress real-time · ยกเลิก |
+| — | **ภาพรวม** | แสดงสถานะ FFmpeg + คิวงาน + ETA |
+| 1 | **แหล่งข้อมูล** | ปกเดียวหรือโฟลเดอร์ปก · โฟลเดอร์ไฟล์เสียง · **อินโทร (เสริม)** · ปลายทาง · คำนำหน้า |
+| 2 | **ไฟล์เสียง** | เลือกไฟล์เสียงทีละไฟล์หรือทั้งหมด · search filter |
+| 3 | **เรนเดอร์** | เริ่ม · ดู progress real-time · ยกเลิก |
+
+### แทรกอินโทร (intro clip — ไม่บังคับ)
+
+ใน section "แหล่งข้อมูล" → field **"แทรกอินโทร (ไม่บังคับ)"** — เลือกไฟล์ `.mp4` / `.mov` / `.mkv` / `.webm` / `.avi`
+
+```mermaid
+flowchart LR
+    Intro["intro.mp4<br/>(เสริม)"] --> Concat{{"FFmpeg<br/>concat"}}
+    Cover["ปก + เสียงตอน 1"] --> Concat
+    Concat --> Out1[("001.mp4")]
+
+    Intro -.-> Concat2{{"FFmpeg<br/>concat"}}
+    Cover2["ปก + เสียงตอน 2"] --> Concat2
+    Concat2 --> Out2[("002.mp4")]
+
+    classDef io fill:#fff7ed,stroke:#f97316,color:#7c2d12
+    classDef proc fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef result fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+
+    class Intro,Cover,Cover2 io
+    class Concat,Concat2 proc
+    class Out1,Out2 result
+```
+
+> อินโทรจะถูก prepend หน้าทุกตอน — เผื่อใช้เป็นโลโก้ช่อง / sponsor / สวัสดีผู้ฟัง / โฆษณาสั้น
 
 ### Pipeline ของการ render 1 คลิป
 
@@ -171,10 +259,10 @@ flowchart LR
 flowchart LR
     Cover["ปก<br/>(.png/.jpg)"] --> FFmpeg{{"FFmpeg<br/>ในตัวแอป"}}
     Audio["เสียง<br/>(.m4a/.mp3)"] --> FFmpeg
-    Encoder[/"encoder + CRF + res"/] -.-> FFmpeg
+    Profile[/"144p · 1fps<br/>ultrafast · CRF 51"/] -.-> FFmpeg
 
-    FFmpeg --> Scale["scale + crop<br/>ตาม resolution"]
-    Scale --> Encode["encode<br/>(libx264 / NVENC)"]
+    FFmpeg --> Scale["scale 256×144<br/>+ 1 fps loop"]
+    Scale --> Encode["encode<br/>libx264 ultrafast"]
     Encode --> Mux["mux<br/>video + AAC audio"]
     Mux --> MP4[("คลิป .mp4<br/>ครบทุกตอน")]
 
@@ -251,37 +339,19 @@ sequenceDiagram
 
 ---
 
-## Machine preset — กาก/กลาง/เทพ
+## Script ของโมดูลทำปก
 
-3 preset ที่กดทีเดียวเซ็ต encoder + CRF + resolution พร้อมกัน
+INKSTUDIO มี **Cover script** อย่างเดียว — โมดูลเรนเดอร์คลิปไม่มี preset เพราะค่าทุกอย่างฟิกซ์ (ดู "โปรไฟล์ฟิกซ์" ของโมดูลเรนเดอร์)
 
-| Preset | Encoder | CRF | Resolution | เหมาะกับ |
-|---|---|:---:|:---:|---|
-| **คอมกาก** | Software H.264 | 30 | 480p | คอมเก่า · แล็ปท็อปไม่มี GPU |
-| **คอมกลาง** | Software H.264 | 26 | 720p | คอมทั่วไป |
-| **คอมเทพ** | NVENC H.264 | 22 | 1080p | คอมที่มี GPU NVIDIA |
-
-> ปรับ encoder/CRF/res เองได้ตลอด — ถ้าค่าตรงกับ preset ใด ระบบจะ highlight ให้
-
----
-
-## Script (preset) save/load
-
-INKSTUDIO มี 2 ประเภท preset แยกกัน
-
-### Cover script (ทำปก)
+### Cover script
 
 เก็บ: pixel ของ blur · dim · foreground cover (ขนาด/ตำแหน่ง/มุมโค้ง/เงา) · title text layer · chapter template · batch range · padding · format
 
 ใช้ซ้ำกับนิยายเรื่องอื่น — แค่อัปโหลดภาพใหม่ + load script
 
-### Render preset (เรนเดอร์คลิป)
+เก็บใน localStorage ของแอป — Reset ผ่าน DevTools (`F12` → Application → Local Storage → ลบ key `inkstudio:*`)
 
-เก็บ: cover/audio/output paths · encoder · CRF · resolution · title prefix
-
-ใช้ซ้ำกับ project เดิม — เปลี่ยน path เฉพาะที่เปลี่ยน
-
-ทั้งคู่เก็บใน localStorage ของแอป
+> **อินโทร** ที่เลือกล่าสุดถูกจำไว้ใน localStorage โดยอัตโนมัติด้วย — เปิดแอปครั้งต่อไปไม่ต้องเลือกใหม่
 
 ---
 
@@ -383,19 +453,17 @@ Dev server รันที่ port **5573** + Electron จะเปิดอั�
 ### Verification commands
 
 ```bash
-pnpm typecheck          # ตรวจ TS
-pnpm test               # vitest run — 68 tests
-pnpm build              # vite build → dist/
+pnpm typecheck          # ตรวจ TS — 0 errors
+pnpm test               # vitest run — 106 tests pass (coverEditorUtils, useRender, shims, ...)
+pnpm build              # vite build → dist/ (~640 KB JS, 77 KB CSS, ~1700 modules)
 
-# Node-side tests (electron + ffmpeg)
-node --test electron/__tests__/*.test.cjs   # 26 tests
-
-# Package
-pnpm package:win        # NSIS installer + Portable
+# Package (NSIS + Portable)
+pnpm package:win        # → release/INKSTUDIO-Setup-x.x.x.exe (≈106 MB)
+                        #   release/INKSTUDIO-Portable-x.x.x.exe (≈106 MB)
 pnpm package:mac        # DMG
 
-# Publish (ต้อง GH_TOKEN)
-pnpm publish:win        # + publish ไป GitHub Releases
+# Publish (ต้อง GH_TOKEN env var)
+pnpm publish:win        # + publish ไป GitHub Releases (snibzyz/inkstudio)
 ```
 
 ### โครงสร้าง
@@ -403,26 +471,45 @@ pnpm publish:win        # + publish ไป GitHub Releases
 ```
 INKSTUDIO/
 ├── .app/
-│   ├── docs/architecture.md      ← technical reference
-│   └── shell/                    ← pnpm workspace package
-│       ├── electron/             ← main process
-│       │   ├── main.cjs          ← + single-instance + cache hardening
-│       │   ├── preload.cjs       ← contextBridge → window.inkstudio
-│       │   ├── autoUpdate.cjs    ← electron-updater
-│       │   ├── ipc/render.cjs    ← FFmpeg orchestration
+│   ├── docs/architecture.md         ← technical reference
+│   └── shell/                       ← pnpm workspace package (@inkstudio/desktop-shell)
+│       ├── electron/                ← main process
+│       │   ├── main.cjs             ← single-instance + cache hardening
+│       │   ├── preload.cjs          ← contextBridge → window.inkstudio
+│       │   ├── autoUpdate.cjs       ← electron-updater (NSIS / DMG)
+│       │   ├── ipc/render.cjs       ← FFmpeg orchestration (TODO — main process)
 │       │   ├── ipc/renderHelpers.cjs ← pure helpers (testable)
-│       │   ├── helpers/ffmpeg.cjs  ← path resolve (asar unpack handling)
-│       │   └── __tests__/        ← node test runner
-│       └── src/                  ← React renderer
-│           ├── App.tsx           ← 2-sidebar shell
-│           ├── shell/            ← Sidebar / TitleBar / StatusBar
-│           ├── state/            ← useApp / useStudio
+│       │   ├── helpers/ffmpeg.cjs   ← path resolve (asar unpack handling)
+│       │   └── __tests__/           ← node test runner
+│       └── src/                     ← React renderer
+│           ├── App.tsx              ← 2-sidebar shell
+│           ├── shell/               ← Sidebar / StatusBar
+│           ├── state/
+│           │   ├── useApp.ts        ← activeModule
+│           │   ├── useStudio.ts     ← cover→render sync
+│           │   ├── useHubWorkspace.ts ← INKIDEA shim (mock workspace)
+│           │   └── electronIpcShim.ts ← window.electron.ipc.* → window.inkstudio.*
 │           ├── features/
-│           │   ├── cover/        ← canvas + batch export + scripts
-│           │   ├── render/       ← FFmpeg orchestration + presets
-│           │   └── shared/       ← ModuleShell + PortStatusNotice
-│           └── ui/               ← 8 primitives (จาก .shared/ui/)
-├── .claude/CLAUDE.md             ← developer memory
+│           │   ├── cover/           ← Fabric.js canvas (fork จาก INKIDEA)
+│           │   │   ├── setupCoverCanvas.ts    ← viewport + pan + cursor + Alt-drag
+│           │   │   ├── CoverEditor.tsx        ← root + tabs
+│           │   │   ├── CoverCanvas.tsx        ← toolbar + pasteboard
+│           │   │   ├── CoverInspectorPanel.tsx + inspector/  ← 8 sections
+│           │   │   ├── useCoverEditor.ts      ← shortcuts + layer ops (860 LOC)
+│           │   │   └── ... + 9 ไฟล์ helper
+│           │   ├── render/          ← Render module (fork จาก INKIDEA, ลดเหลือ profile fix)
+│           │   │   ├── RenderTab.tsx
+│           │   │   ├── RenderSettingsPane.tsx
+│           │   │   ├── sections/{Overview,Source,Files,Progress,QuickActions}
+│           │   │   ├── useRender.ts            ← zustand store (introClipPath persist)
+│           │   │   ├── useRenderJob.ts         ← IPC orchestration
+│           │   │   ├── renderConstants.ts      ← FIXED_RESOLUTION='144p', FIXED_CRF=51, ...
+│           │   │   └── renderTypes.ts
+│           │   └── shared/          ← ModuleShell (legacy)
+│           ├── shared-ui/           ← @shared/ui fork (40 ไฟล์ from INKIDEA)
+│           ├── workspace/           ← HubIdeSettingsShell facade
+│           └── types/window.d.ts    ← window.inkstudio + LegacyElectronIpc types
+├── .claude/CLAUDE.md                ← developer memory
 ├── package.json (workspace root)
 ├── pnpm-workspace.yaml
 ├── start.bat / install.bat
@@ -435,9 +522,10 @@ INKSTUDIO/
 
 ## License + ที่มา
 
-- โครงสร้าง shell มาจาก **INKTTS** (พี่น้องตระกูล INK)
-- UI primitives มาจาก **INKIDEA** hub
-- Brand amber `#F59E0B` มาจาก **INKREALM**
-- Auto-update ใช้ `electron-updater`
-- FFmpeg ใช้ `ffmpeg-static` (FFmpeg 6.1.1 gyan.dev build)
-- Canvas pure functions (testable in Node ผ่าน `@napi-rs/canvas`)
+- **Cover canvas** fork จาก **INKIDEA** workspace/cover (Fabric.js artboard + zoom/pan + smart guides)
+- **Render module** fork จาก **INKIDEA** workspace/render → ลดเหลือโปรไฟล์ฟิกซ์ 144p/1fps + เพิ่ม intro clip
+- **UI primitives** (`@shared/ui`) fork จาก **INKIDEA** `.app/shared/ui/` ทั้ง 40 ไฟล์
+- **Electron shell** มาจาก **INKTTS** (single-instance lock + cache hardening + electron-updater)
+- **Brand amber** `#F59E0B` มาจาก **INKREALM**
+- **FFmpeg** ใช้ `ffmpeg-static` (FFmpeg 6.1.1 gyan.dev build) — `-c:v libx264 -preset ultrafast -crf 51 -r 1 -vf scale=256:144`
+- **Photoshop UX**: Space/MMB pan, Ctrl+wheel zoom-at-cursor, H/V tool toggle, Alt+drag duplicate, Ctrl+0/1 view, Ctrl+] / Ctrl+[ stack, Delete / Ctrl+J / arrow nudge
