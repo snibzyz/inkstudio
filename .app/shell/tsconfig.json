@@ -18,7 +18,9 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@shared/ui": ["src/shared-ui/index.ts"],
+      "@shared/ui/*": ["src/shared-ui/*"]
     }
   },
   "include": ["src"],

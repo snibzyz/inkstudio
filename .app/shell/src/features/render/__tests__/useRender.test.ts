@@ -1,166 +1,191 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+/**
+ * Tests สำหรับ useRender store
+ * — ตรวจ initial state + setters + actions
+ * — ตรวจ persist introClipPath ลง localStorage
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FIXED_CRF, FIXED_ENCODE_OPTION, FIXED_RESOLUTION, LOG_BUFFER_LIMIT, STORAGE_KEY } from '../renderConstants'
 
 beforeEach(async () => {
   if (typeof localStorage !== 'undefined') localStorage.clear()
-  const { useRender } = await import('../useRender')
-  useRender.setState({
-    coverPath: '',
-    coverFolder: '',
-    useMultipleCovers: false,
-    audioFolder: '',
-    outputFolder: '',
-    titlePrefix: '',
-    encodeOption: 'Software (H.264)',
-    crfValue: 26,
-    resolutionLabel: '720p',
-    selectedMachinePreset: null,
-    audioFiles: [],
-    audioSearch: '',
-    selectedAudioFiles: new Set(),
-    presets: {},
-    selectedPresetName: '',
-    presetNameInput: '',
-    job: {
-      busy: false,
-      jobId: null,
-      progress: 0,
-      current: 0,
-      total: 0,
-      message: '',
-      error: null,
-      fileName: '',
-      currentTimeText: '',
-      durationText: '',
-      logs: [],
-      summary: null,
-    },
-    ffmpeg: { ok: false, version: '', path: '', checked: false },
-  })
+  vi.resetModules()
 })
 
-describe('useRender — encoding setters', () => {
-  it('setEncodeOption clear machine match ถ้าค่าใหม่ไม่ตรง preset', async () => {
+describe('useRender — initial state', () => {
+  it('source ฟิลด์เริ่มต้นเป็น empty string', async () => {
     const { useRender } = await import('../useRender')
-    useRender.getState().applyMachinePreset('weak')
-    expect(useRender.getState().selectedMachinePreset).toBe('weak')
-    useRender.getState().setEncodeOption('NVENC (H.265)')
-    expect(useRender.getState().selectedMachinePreset).toBeNull()
-  })
-
-  it('applyMachinePreset เซ็ตทั้ง 3 ค่า + flag machine preset', async () => {
-    const { useRender } = await import('../useRender')
-    useRender.getState().applyMachinePreset('strong')
     const s = useRender.getState()
-    expect(s.encodeOption).toBe('NVENC (H.264)')
-    expect(s.crfValue).toBe(22)
-    expect(s.resolutionLabel).toBe('1080p')
-    expect(s.selectedMachinePreset).toBe('strong')
+    expect(s.imagePath).toBe('')
+    expect(s.audioFolder).toBe('')
+    expect(s.outputFolder).toBe('')
+    expect(s.coverFolder).toBe('')
+    expect(s.useMultipleCovers).toBe(false)
+    expect(s.titlePrefix).toBe('')
+    expect(s.introClipPath).toBe('')
   })
 
-  it('setCrfValue ตรวจ match กับ machine preset อัตโนมัติ', async () => {
+  it('encoding fixed ที่ค่า profile', async () => {
     const { useRender } = await import('../useRender')
-    useRender.getState().setEncodeOption('Software (H.264)')
-    useRender.getState().setResolutionLabel('720p')
-    useRender.getState().setCrfValue(26)
-    expect(useRender.getState().selectedMachinePreset).toBe('medium')
+    const s = useRender.getState()
+    expect(s.encodeOption).toBe(FIXED_ENCODE_OPTION)
+    expect(s.crfValue).toBe(FIXED_CRF)
+    expect(s.resolution).toBe(FIXED_RESOLUTION)
+  })
+
+  it('job state เริ่มเป็น idle', async () => {
+    const { useRender } = await import('../useRender')
+    const s = useRender.getState()
+    expect(s.busy).toBe(false)
+    expect(s.error).toBeNull()
+    expect(s.status).toBe('พร้อมทำงาน')
+    expect(s.progress).toBe(0)
+    expect(s.logs).toEqual([])
+  })
+
+  it('selectedAudioFiles เริ่มเป็น empty Set', async () => {
+    const { useRender } = await import('../useRender')
+    expect(useRender.getState().selectedAudioFiles.size).toBe(0)
   })
 })
 
-describe('useRender — audio files selection', () => {
-  it('setAudioFiles รักษา selection ที่ยังอยู่ใน list ใหม่', async () => {
+describe('useRender — source setters', () => {
+  it('setImagePath เซ็ตค่า', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().setImagePath('Z:/cover.png')
+    expect(useRender.getState().imagePath).toBe('Z:/cover.png')
+  })
+
+  it('setUseMultipleCovers toggle', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().setUseMultipleCovers(true)
+    expect(useRender.getState().useMultipleCovers).toBe(true)
+  })
+
+  it('setIntroClipPath เซ็ตค่า + persist localStorage', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().setIntroClipPath('Z:/intro.mp4')
+    expect(useRender.getState().introClipPath).toBe('Z:/intro.mp4')
+    // persist เป็น debounce 120ms — รอแล้วเช็ค
+    await new Promise((r) => setTimeout(r, 200))
+    const raw = localStorage.getItem(STORAGE_KEY)
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).introClipPath).toBe('Z:/intro.mp4')
+  })
+
+  it('load persisted introClipPath ตอน boot', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ introClipPath: 'Z:/saved.mp4' }))
+    const { useRender } = await import('../useRender')
+    expect(useRender.getState().introClipPath).toBe('Z:/saved.mp4')
+  })
+})
+
+describe('useRender — files selection', () => {
+  it('selectAll เลือกทุกไฟล์', async () => {
     const { useRender } = await import('../useRender')
     useRender.getState().setAudioFiles(['a.mp3', 'b.mp3', 'c.mp3'])
-    useRender.getState().clearAudioSelection()
-    useRender.getState().toggleAudioFile('b.mp3')
-    expect(useRender.getState().selectedAudioFiles.has('b.mp3')).toBe(true)
-
-    useRender.getState().setAudioFiles(['b.mp3', 'd.mp3'])
-    expect(useRender.getState().selectedAudioFiles.has('b.mp3')).toBe(true)
-    expect(useRender.getState().selectedAudioFiles.has('d.mp3')).toBe(false)
+    useRender.getState().selectAll()
+    const sel = useRender.getState().selectedAudioFiles
+    expect(sel.size).toBe(3)
+    expect(sel.has('a.mp3')).toBe(true)
+    expect(sel.has('c.mp3')).toBe(true)
   })
 
-  it('setAudioFiles เซ็ต all-selected ถ้า selection ก่อนหน้าว่าง', async () => {
+  it('clearSelection ล้างทั้งหมด', async () => {
     const { useRender } = await import('../useRender')
-    useRender.getState().setAudioFiles(['x.mp3', 'y.mp3'])
-    expect(useRender.getState().selectedAudioFiles.size).toBe(2)
-  })
-
-  it('toggleAudioFile + selectAll + clear ทำงานถูก', async () => {
-    const { useRender } = await import('../useRender')
-    useRender.getState().setAudioFiles(['1.mp3', '2.mp3', '3.mp3'])
-    useRender.getState().clearAudioSelection()
+    useRender.getState().setAudioFiles(['a.mp3'])
+    useRender.getState().selectAll()
+    useRender.getState().clearSelection()
     expect(useRender.getState().selectedAudioFiles.size).toBe(0)
-    useRender.getState().toggleAudioFile('2.mp3')
-    expect(useRender.getState().selectedAudioFiles.has('2.mp3')).toBe(true)
-    useRender.getState().toggleAudioFile('2.mp3')
-    expect(useRender.getState().selectedAudioFiles.has('2.mp3')).toBe(false)
-    useRender.getState().selectAllAudio()
-    expect(useRender.getState().selectedAudioFiles.size).toBe(3)
+  })
+
+  it('toggleAudioFile เพิ่ม/ลบ', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().toggleAudioFile('a.mp3')
+    expect(useRender.getState().selectedAudioFiles.has('a.mp3')).toBe(true)
+    useRender.getState().toggleAudioFile('a.mp3')
+    expect(useRender.getState().selectedAudioFiles.has('a.mp3')).toBe(false)
   })
 })
 
-describe('useRender — presets', () => {
-  it('savePreset + loadPreset round-trip ค่า', async () => {
+describe('useRender — job actions', () => {
+  it('appendLog ต่อ buffer + ตัดเมื่อเกิน LOG_BUFFER_LIMIT', async () => {
     const { useRender } = await import('../useRender')
-    useRender.getState().setCoverPath('Z:/cover.png')
-    useRender.getState().setAudioFolder('Z:/audio')
-    useRender.getState().setOutputFolder('Z:/out')
-    useRender.getState().applyMachinePreset('weak')
-    useRender.getState().savePreset('นิยาย-A')
+    for (let i = 0; i < LOG_BUFFER_LIMIT + 30; i++) {
+      useRender.getState().appendLog(`line ${i}`)
+    }
+    const logs = useRender.getState().logs
+    expect(logs.length).toBe(LOG_BUFFER_LIMIT)
+    // ของท้าย buffer เป็น line สุดท้ายที่ใส่
+    expect(logs[logs.length - 1]).toBe(`line ${LOG_BUFFER_LIMIT + 30 - 1}`)
+  })
 
-    // เปลี่ยนทุกอย่าง
-    useRender.getState().setCoverPath('')
-    useRender.getState().setOutputFolder('')
-    useRender.getState().applyMachinePreset('strong')
+  it('appendLog ข้าม duplicate ติดกัน', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().appendLog('same')
+    useRender.getState().appendLog('same')
+    expect(useRender.getState().logs).toEqual(['same'])
+  })
 
-    useRender.getState().loadPreset('นิยาย-A')
+  it('appendLog ข้าม empty', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().appendLog('')
+    expect(useRender.getState().logs).toEqual([])
+  })
+
+  it('resetJob ล้าง progress/logs/error/status', async () => {
+    const { useRender } = await import('../useRender')
     const s = useRender.getState()
-    expect(s.coverPath).toBe('Z:/cover.png')
-    expect(s.audioFolder).toBe('Z:/audio')
-    expect(s.outputFolder).toBe('Z:/out')
-    expect(s.encodeOption).toBe('Software (H.264)')
-    expect(s.crfValue).toBe(30)
-    expect(s.resolutionLabel).toBe('480p')
-    expect(s.selectedMachinePreset).toBe('weak')
-  })
-
-  it('deletePreset ลบออก + clear selected ถ้าเลือกอยู่', async () => {
-    const { useRender } = await import('../useRender')
-    useRender.getState().savePreset('a')
-    useRender.getState().savePreset('b')
-    useRender.getState().setSelectedPresetName('b')
-
-    useRender.getState().deletePreset('b')
-    expect(Object.keys(useRender.getState().presets)).toEqual(['a'])
-    expect(useRender.getState().selectedPresetName).toBe('')
+    s.setBusy(true)
+    s.setProgress(0.5)
+    s.setStatus('working')
+    s.setError('oh no')
+    s.appendLog('log line')
+    useRender.getState().resetJob()
+    const after = useRender.getState()
+    expect(after.progress).toBe(0)
+    expect(after.error).toBeNull()
+    expect(after.status).toBe('พร้อมทำงาน')
+    expect(after.logs).toEqual([])
   })
 })
 
-describe('useRender — job + logs', () => {
-  it('appendLog skip ซ้ำติดกัน', async () => {
+describe('useRender — resetForActiveProject', () => {
+  it('apply path ของ project + ล้าง queue/logs', async () => {
     const { useRender } = await import('../useRender')
-    useRender.getState().appendLog('first')
-    useRender.getState().appendLog('first')
-    useRender.getState().appendLog('second')
-    expect(useRender.getState().job.logs).toEqual(['first', 'second'])
-  })
-
-  it('appendLog cap ที่ 200 บรรทัด', async () => {
-    const { useRender } = await import('../useRender')
-    for (let i = 0; i < 250; i += 1) useRender.getState().appendLog(`line-${i}`)
-    expect(useRender.getState().job.logs.length).toBe(200)
-    expect(useRender.getState().job.logs[0]).toBe('line-50')
-    expect(useRender.getState().job.logs[199]).toBe('line-249')
-  })
-
-  it('setFfmpeg เซ็ต flag checked=true เสมอ', async () => {
-    const { useRender } = await import('../useRender')
-    useRender.getState().setFfmpeg({ ok: true, version: '6.1.1', path: 'C:/ffmpeg.exe' })
-    expect(useRender.getState().ffmpeg).toEqual({
-      ok: true,
-      version: '6.1.1',
-      path: 'C:/ffmpeg.exe',
-      checked: true,
+    useRender.getState().appendLog('old')
+    useRender.getState().setBusy(true)
+    useRender.getState().resetForActiveProject('p1', {
+      audioRaw: '/audio/raw',
+      audioProcessed: '/audio/done',
+      renderOutput: '/out',
+      covers: '/covers',
     })
+    const s = useRender.getState()
+    expect(s.audioFolder).toBe('/audio/raw')
+    expect(s.audioProcessedFolder).toBe('/audio/done')
+    expect(s.outputFolder).toBe('/out')
+    expect(s.coverFolder).toBe('/covers')
+    expect(s.busy).toBe(false)
+    expect(s.logs).toEqual([])
+    expect(s.appliedProjectId).toBe('p1')
+  })
+
+  it('ไม่ apply ซ้ำถ้า project เดิม', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().resetForActiveProject('p1', { audioRaw: '/a' })
+    useRender.getState().setAudioFolder('/changed')
+    useRender.getState().resetForActiveProject('p1', { audioRaw: '/b' })
+    // path ไม่ revert เพราะ project เดิม
+    expect(useRender.getState().audioFolder).toBe('/changed')
+  })
+
+  it('projectId=null reset state', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().resetForActiveProject('p1', { audioRaw: '/a' })
+    useRender.getState().resetForActiveProject(null, null)
+    const s = useRender.getState()
+    expect(s.appliedProjectId).toBeNull()
+    expect(s.audioFolder).toBe('')
   })
 })

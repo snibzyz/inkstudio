@@ -1,5 +1,4 @@
 import { Sidebar } from './shell/Sidebar'
-import { TitleBar } from './shell/TitleBar'
 import { StatusBar } from './shell/StatusBar'
 import { useApp } from './state/useApp'
 import { CoverModule } from './features/cover'
@@ -10,10 +9,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-vscode-editor text-vscode-fg">
-      <TitleBar />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
           {active === 'cover' ? <CoverModule /> : null}
           {active === 'render' ? <RenderModule /> : null}
         </main>

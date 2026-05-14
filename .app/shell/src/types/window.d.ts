@@ -43,15 +43,52 @@ export type RenderBatchArgs = {
   coverFolder: string
   useMultipleCovers: boolean
   titlePrefix: string
+  /** ไฟล์อินโทร (วิดีโอ) ที่จะ prepend หน้าทุกตอน — ว่าง = ไม่ใช้ */
+  introClipPath?: string
   encodeOption: string
   crfValue: number
+  /** '144p' | '240p' | '360p' | '480p' | '720p' | '1080p' */
   resolutionLabel: string
+  /** FPS ของ video stream — INKSTUDIO ใช้ 1 fps (ภาพนิ่ง) */
+  fps: number
+  /** x264 preset — INKSTUDIO ใช้ 'ultrafast' (เร็วสุด ทรัพยากรน้อยสุด) */
+  preset: string
   overwriteMode: 'ask' | 'skip' | 'overwrite'
   selectedAudioFiles: string[]
 }
 
+export type PresetMap = Record<string, unknown>
+
+/**
+ * INKIDEA-style legacy IPC surface — exposed via electronIpcShim
+ * Code ที่ port มาจาก INKIDEA จะเรียก window.electron.ipc.* ตามนี้
+ */
+export type LegacyElectronIpc = {
+  selectFiles: (opts: SelectFilesOptions & { defaultPath?: string }) => Promise<string[]>
+  readFileAsDataUrl: (arg: { filePath: string }) => Promise<string>
+  savePath: (arg: { defaultPath?: string; filters?: SelectFilesOptions['filters']; title?: string }) => Promise<string | null>
+  exportCoverPng: (arg: { filePath?: string; outputPath?: string; base64?: string; dataUrl?: string }) => Promise<{ ok: boolean; error?: string }>
+  listFonts: () => Promise<string[]>
+  hubReadWorkspaceTextFile: (arg: { relPath: string }) => Promise<{ missing: boolean; content?: string }>
+  hubWriteWorkspaceTextFile: (arg: { relPath: string; content: string }) => Promise<void>
+  hubOpenInExplorerWorkspaceRel: (arg: { relPath: string }) => Promise<void>
+  hubListProjects: () => Promise<unknown[]>
+  startBatchCoverRender: (args: RenderBatchArgs) => Promise<RenderSummary>
+  cancelRenderJob: (arg: { jobId: string }) => Promise<{ ok: boolean }>
+  onRenderProgress: (cb: (payload: RenderProgressPayload) => void) => void
+  offRenderProgress: () => void
+  listAudioFiles: (arg: { folderPath: string }) => Promise<string[]>
+  getPreferredEncoder: () => Promise<string>
+  listPresets: () => Promise<PresetMap>
+  savePreset: (arg: { name: string; data: unknown }) => Promise<PresetMap>
+  deletePreset: (arg: { name: string }) => Promise<PresetMap>
+}
+
 declare global {
   interface Window {
+    electron?: {
+      ipc: LegacyElectronIpc
+    }
     inkstudio?: {
       platform: NodeJS.Platform
       isMac: boolean
@@ -135,9 +172,12 @@ declare global {
           selectedAudioFiles: string[]
           outputFolder: string
           titlePrefix: string
+          introClipPath?: string
           encodeOption: string
           crfValue: number
-          resolutionLabel: '480p' | '720p' | '1080p'
+          resolutionLabel: '144p' | '240p' | '360p' | '480p' | '720p' | '1080p'
+          fps: number
+          preset: string
           overwriteMode: 'skip' | 'overwrite'
         }) => Promise<RenderSummary>
         cancelJob: (jobId: string) => Promise<{ ok: boolean }>

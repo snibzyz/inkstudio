@@ -1,2 +1,7 @@
 packages:
   - '.app/shell'
+
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+  - ffmpeg-static

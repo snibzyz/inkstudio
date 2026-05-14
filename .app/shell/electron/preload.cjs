@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('inkstudio', {
   },
 
   // ─── render (โมดูลเรนเดอร์คลิป) ──────────────────────────────────────────
+  // Profile fix ฝั่ง renderer: 144p · 1 fps · CRF 51 · Software H.264 · preset ultrafast
+  // main process รับ args (introClipPath, fps, preset, resolutionLabel) แล้ว build FFmpeg cmd
   render: {
     checkFfmpeg: () => invoke('render:checkFfmpeg'),
     listAudioFiles: (folderPath) => invoke('render:listAudioFiles', { folderPath }),
