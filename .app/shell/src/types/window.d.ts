@@ -60,6 +60,51 @@ export type RenderBatchArgs = {
 export type PresetMap = Record<string, unknown>
 
 /**
+ * Auto-update event payloads — emitted by electron/autoUpdate.cjs
+ *
+ * `mode`:
+ *   - 'portable' — custom updater (Win portable / mac ad-hoc) — banner shows
+ *     a manual "อัพเดตเลย" button that triggers download + helper swap
+ *   - 'auto'     — electron-updater NSIS path — banner shows "รีสตาร์ทเดี๋ยวนี้"
+ *     after quiet background download
+ */
+export type UpdateAvailableInfo = {
+  mode: 'portable' | 'auto'
+  version: string
+  current?: string
+  downloadUrl?: string
+  releaseUrl?: string
+  releaseDate?: string | null
+  releaseNotes?: string
+}
+
+export type UpdateProgressInfo = {
+  percent: number
+  received?: number
+  total?: number
+  bytesPerSecond?: number
+}
+
+export type UpdateDownloadedInfo = {
+  mode: 'portable' | 'auto'
+  version: string
+}
+
+export type UpdateErrorInfo = {
+  message: string
+}
+
+export type UpdateCheckResult = {
+  available: boolean
+  version?: string
+  latest?: string
+  current?: string
+  releaseDate?: string | null
+  releaseUrl?: string
+  downloadUrl?: string
+}
+
+/**
  * INKIDEA-style legacy IPC surface — exposed via electronIpcShim
  * Code ที่ port มาจาก INKIDEA จะเรียก window.electron.ipc.* ตามนี้
  */
@@ -97,8 +142,12 @@ declare global {
 
       app: {
         version: string
-        checkUpdate: () => Promise<unknown>
-        applyUpdate: () => Promise<unknown>
+        checkUpdate: () => Promise<{ ok: boolean; result?: UpdateCheckResult | null; error?: string }>
+        applyUpdate: () => Promise<{ ok: boolean; downloaded?: boolean; error?: string }>
+        onUpdateAvailable: (handler: (info: UpdateAvailableInfo) => void) => () => void
+        onUpdateProgress: (handler: (info: UpdateProgressInfo) => void) => () => void
+        onUpdateDownloaded: (handler: (info: UpdateDownloadedInfo) => void) => () => void
+        onUpdateError: (handler: (info: UpdateErrorInfo) => void) => () => void
       }
 
       window: {

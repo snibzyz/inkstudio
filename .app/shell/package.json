@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "INKSTUDIO desktop shell — Electron + React renderer",
+  "author": {
+    "name": "INKREALM",
+    "email": "support@inkrealm.co",
+    "url": "https://inkrealm.co"
+  },
+  "homepage": "https://inkrealm.co/programs",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c blue,magenta \"pnpm dev:vite\" \"pnpm dev:electron\"",
@@ -49,8 +55,12 @@
   "build": {
     "appId": "com.inkstudio.app",
     "productName": "INKSTUDIO",
+    "copyright": "© 2026 INKREALM",
+    "afterPack": "build/afterPack.cjs",
+    "afterSign": "build/afterSign.cjs",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -111,15 +121,52 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "category": "public.app-category.utilities",
       "icon": "public/logo.png",
       "identity": null,
-      "artifactName": "INKSTUDIO-${version}-${arch}.${ext}"
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "minimumSystemVersion": "10.15.0",
+      "artifactName": "INKSTUDIO-${version}-${arch}.${ext}",
+      "extendInfo": {
+        "NSHumanReadableCopyright": "© 2026 INKREALM",
+        "LSApplicationCategoryType": "public.app-category.utilities",
+        "CFBundleDisplayName": "INKSTUDIO",
+        "NSRequiresAquaSystemAppearance": false
+      }
     },
     "dmg": {
-      "writeUpdateInfo": true
+      "writeUpdateInfo": true,
+      "title": "INKSTUDIO ${version}",
+      "iconSize": 96,
+      "contents": [
+        {
+          "x": 140,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   }
 }

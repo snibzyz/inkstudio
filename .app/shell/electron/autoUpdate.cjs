@@ -20,6 +20,7 @@
 const { ipcMain, app } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const { createLogger } = require('./helpers/logger.cjs')
+const macUpdater = require('./macUpdate.cjs')
 
 const log = createLogger('autoupdate')
 
@@ -29,9 +30,17 @@ const PERIODIC_MS = 30 * 60 * 1000
 let _checking = false
 let _hasDownloaded = false
 let _pending = null
+let _pendingMacUpdate = null
 
 function isSupported() {
   return process.platform === 'win32' || process.platform === 'darwin'
+}
+
+// Ad-hoc signed mac builds can't use Squirrel.Mac auto-update — Squirrel
+// requires Apple Developer ID signature for verification. Route mac through
+// our custom updater (download zip + swap .app + re-apply ad-hoc codesign).
+function useMacCustomUpdater() {
+  return macUpdater.isMacPackaged()
 }
 
 function safeSend(channel, payload) {
@@ -118,10 +127,39 @@ async function checkOnce() {
   }
 }
 
+async function checkMacOnce() {
+  const result = await macUpdater.checkForUpdates()
+  if (!result || !result.available) {
+    log.info('no mac update')
+    return
+  }
+  _pendingMacUpdate = result
+  log.info('mac update available', { version: result.latest })
+  safeSend('app:updateAvailable', {
+    mode: 'portable',
+    version: result.latest,
+    current: result.current,
+    downloadUrl: result.downloadUrl,
+    releaseUrl: result.releaseUrl,
+    releaseDate: result.releaseDate,
+  })
+}
+
 function start(mainWindow) {
   mainWindowRef = mainWindow
   if (process.env.NODE_ENV === 'development') {
     log.info('auto-update disabled in dev')
+    return
+  }
+  if (useMacCustomUpdater()) {
+    log.info('mac mode — using custom updater (ad-hoc signed builds)')
+    setTimeout(() => {
+      checkMacOnce().catch((err) => log.warn('first mac check failed', { error: err && err.message }))
+    }, 5000)
+    if (periodicTimer) clearInterval(periodicTimer)
+    periodicTimer = setInterval(() => {
+      checkMacOnce().catch((err) => log.warn('periodic mac check failed', { error: err && err.message }))
+    }, PERIODIC_MS)
     return
   }
   if (!isSupported()) {
@@ -142,6 +180,11 @@ function start(mainWindow) {
 function registerIpc() {
   ipcMain.handle('app:checkUpdate', async () => {
     if (process.env.NODE_ENV === 'development') return { ok: false, error: 'disabled in dev' }
+    if (useMacCustomUpdater()) {
+      const result = await macUpdater.checkForUpdates()
+      if (result && result.available) _pendingMacUpdate = result
+      return { ok: true, result }
+    }
     if (!isSupported()) return { ok: false, error: 'platform not supported' }
     try {
       const result = await autoUpdater.checkForUpdates()
@@ -152,6 +195,15 @@ function registerIpc() {
   })
 
   ipcMain.handle('app:applyUpdate', async () => {
+    if (useMacCustomUpdater()) {
+      if (!_pendingMacUpdate) return { ok: false, error: 'no pending update' }
+      try {
+        await macUpdater.downloadAndApply(_pendingMacUpdate.downloadUrl, _pendingMacUpdate.latest, mainWindowRef)
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: err && err.message }
+      }
+    }
     if (!isSupported()) return { ok: false, error: 'platform not supported' }
     if (!_hasDownloaded) {
       // ถ้ายังไม่ดาวน์โหลด แต่ user กดอัพเดต → trigger download

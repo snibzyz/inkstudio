@@ -30,6 +30,13 @@ const log = createLogger('main')
 const isDev = process.env.NODE_ENV === 'development'
 const isMac = process.platform === 'darwin'
 
+// Windows: bind taskbar + toast notifications to our AUMID so they show
+// "INKSTUDIO" (with our icon) instead of "electron.exe" / generic "Electron".
+// Must run before any BrowserWindow is created. Linux/mac use bundle id.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.inkstudio.app')
+}
+
 let mainWindow = null
 
 // ─── Single-instance lock — ป้องกันเปิดแอปซ้ำ ─────────────────────────────
