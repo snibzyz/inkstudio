@@ -1,4 +1,4 @@
-import { cn } from '@shared/ui'
+import { cn, Codicon } from '@shared/ui'
 import {
   Circle as CircleIcon,
   Eye, EyeOff,
@@ -6,7 +6,7 @@ import {
   Layers,
   Palette,
   Square,
-  Trash2, Type,
+  Type,
 } from 'lucide-react'
 import type * as fabric from 'fabric'
 import type { InkLayerKind } from '../coverEditorTypes'
@@ -154,7 +154,7 @@ export function LayersSection({ open, onToggle }: { open: boolean; onToggle: () 
                       syncLayers()
                     }}
                   >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    <Codicon name="trash" size={14} />
                     <span className="sr-only">ลบเลเยอร์</span>
                   </button>
                 ) : null}

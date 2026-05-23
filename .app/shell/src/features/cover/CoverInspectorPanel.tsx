@@ -81,7 +81,7 @@ export function CoverInspectorPanel() {
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-vscode-muted">เทมเพลต</span>
         <div className="ml-auto flex items-center gap-1">
           <AppButton tone="primary" disabled={busy} onPress={saveCoverTemplate}
-            title="บันทึกเทมเพลต (canvas + รูปภาพ + การตั้งค่า) ลง Cover/cover-template.json ของโปรเจกต์"
+            title="บันทึกเทมเพลต (canvas + รูปภาพ + การตั้งค่า) ลงโฟลเดอร์ Cover (ปก) ของโปรเจกต์"
             className="min-h-8 gap-1 px-2 text-[11px]">
             <Save className="h-3 w-3 shrink-0" aria-hidden />
             บันทึก

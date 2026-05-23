@@ -28,6 +28,10 @@ type InkstudioMock = {
     onProgress: ReturnType<typeof vi.fn>
     listAudioFiles: ReturnType<typeof vi.fn>
     getPreferredEncoder: ReturnType<typeof vi.fn>
+    diagnoseEncoder?: ReturnType<typeof vi.fn>
+    watchAudioFolder?: ReturnType<typeof vi.fn>
+    unwatchAudioFolder?: ReturnType<typeof vi.fn>
+    onAudioFolderChanged?: ReturnType<typeof vi.fn>
   }
 }
 
@@ -52,6 +56,10 @@ beforeEach(async () => {
       onProgress: vi.fn().mockReturnValue(unsubscribeSpy),
       listAudioFiles: vi.fn(),
       getPreferredEncoder: vi.fn(),
+      diagnoseEncoder: vi.fn(),
+      watchAudioFolder: vi.fn(),
+      unwatchAudioFolder: vi.fn(),
+      onAudioFolderChanged: vi.fn().mockReturnValue(vi.fn()),
     },
   }
   ;(window as unknown as { inkstudio: InkstudioMock }).inkstudio = mock
@@ -265,6 +273,53 @@ describe('render IPC routing', () => {
     expect(mock.render.onProgress).toHaveBeenCalledWith(cb)
     ;(ipc().offRenderProgress as () => void)()
     expect(unsubscribeSpy).toHaveBeenCalled()
+  })
+
+  it('diagnoseEncoder → proxy render.diagnoseEncoder', async () => {
+    mock.render.diagnoseEncoder!.mockResolvedValue({
+      preferred: 'NVENC (H.264)',
+      gpu: { name: 'RTX 2070', driver: '536.40' },
+      nvenc: { ok: true, error: '' },
+      encoders: {
+        nvencH264: { ok: true, error: '' },
+        nvencHevc: { ok: true, error: '' },
+        vtH264: { ok: false, error: '' },
+        vtHevc: { ok: false, error: '' },
+        software: { ok: true, error: '' },
+      },
+    })
+    const res = await (ipc().diagnoseEncoder as (a?: object) => Promise<{ preferred?: string }>)({ refresh: true })
+    expect(res.preferred).toBe('NVENC (H.264)')
+    expect(mock.render.diagnoseEncoder).toHaveBeenCalledWith(true)
+  })
+
+  it('diagnoseEncoder fallback ถ้า render.diagnoseEncoder ไม่มี', async () => {
+    delete mock.render.diagnoseEncoder
+    const res = await (ipc().diagnoseEncoder as () => Promise<{ preferred?: string }>)()
+    expect(res.preferred).toBe('Software (H.264)')
+  })
+
+  it('watchAudioFolder → proxy render.watchAudioFolder', async () => {
+    mock.render.watchAudioFolder!.mockResolvedValue({ watching: true })
+    const res = await (ipc().watchAudioFolder as (a: object) => Promise<{ watching: boolean }>)({ folderPath: '/a' })
+    expect(res.watching).toBe(true)
+    expect(mock.render.watchAudioFolder).toHaveBeenCalledWith('/a')
+  })
+
+  it('unwatchAudioFolder → proxy', async () => {
+    mock.render.unwatchAudioFolder!.mockResolvedValue({ watching: false })
+    const res = await (ipc().unwatchAudioFolder as () => Promise<{ watching: boolean }>)()
+    expect(res.watching).toBe(false)
+  })
+
+  it('onAudioFolderChanged/offAudioFolderChanged lifecycle', async () => {
+    const audioUnsub = vi.fn()
+    mock.render.onAudioFolderChanged!.mockReturnValue(audioUnsub)
+    const cb = vi.fn()
+    ;(ipc().onAudioFolderChanged as (cb: unknown) => void)(cb)
+    expect(mock.render.onAudioFolderChanged).toHaveBeenCalledWith(cb)
+    ;(ipc().offAudioFolderChanged as () => void)()
+    expect(audioUnsub).toHaveBeenCalled()
   })
 })
 

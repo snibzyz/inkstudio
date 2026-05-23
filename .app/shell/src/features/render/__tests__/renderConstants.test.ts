@@ -1,40 +1,54 @@
 /**
- * Smoke tests for renderConstants — รับประกัน profile fix ที่ผู้ใช้ขอ
+ * Smoke tests for renderConstants — INKIDEA shape (ports from INKIDEA)
+ *   - encoder dropdown options + resolution options + CRF range
+ *   - storage key uses inkstudio: prefix
  */
 
 import { describe, expect, it } from 'vitest'
 import {
-  FIXED_CRF,
-  FIXED_ENCODE_OPTION,
-  FIXED_FPS,
-  FIXED_PRESET,
-  FIXED_PROFILE_INFO,
-  FIXED_RESOLUTION,
+  CRF_MAX,
+  CRF_MIN,
+  DEFAULT_CRF,
+  DEFAULT_ENCODE_OPTION,
+  DEFAULT_RESOLUTION,
+  ENCODE_OPTIONS,
+  FIXED_AUDIO_INFO,
   INTRO_VIDEO_EXTENSIONS,
   LOG_BUFFER_LIMIT,
+  RESOLUTION_OPTIONS,
   STORAGE_KEY,
 } from '../renderConstants'
 
-describe('renderConstants — locked profile', () => {
-  it('resolution = 144p', () => {
-    expect(FIXED_RESOLUTION).toBe('144p')
+describe('renderConstants — defaults', () => {
+  it('default encoder = Software H.264', () => {
+    expect(DEFAULT_ENCODE_OPTION).toBe('Software (H.264)')
   })
-  it('encoder = Software H.264', () => {
-    expect(FIXED_ENCODE_OPTION).toBe('Software (H.264)')
+  it('default CRF = CRF_MAX', () => {
+    expect(DEFAULT_CRF).toBe(CRF_MAX)
   })
-  it('CRF = 51 (worst quality, smallest file)', () => {
-    expect(FIXED_CRF).toBe(51)
+  it('CRF range sensible (CRF_MIN < CRF_MAX)', () => {
+    expect(CRF_MIN).toBeLessThan(CRF_MAX)
   })
-  it('fps = 1', () => {
-    expect(FIXED_FPS).toBe(1)
+  it('default resolution = 240p', () => {
+    expect(DEFAULT_RESOLUTION).toBe('240p')
   })
-  it('preset = ultrafast', () => {
-    expect(FIXED_PRESET).toBe('ultrafast')
+  it('FIXED_AUDIO_INFO อ้างถึง 1 fps + AAC', () => {
+    expect(FIXED_AUDIO_INFO).toContain('1 fps')
+    expect(FIXED_AUDIO_INFO.toLowerCase()).toContain('aac')
   })
-  it('FIXED_PROFILE_INFO อ้างถึง 144p + 1 fps + CRF 51', () => {
-    expect(FIXED_PROFILE_INFO).toContain('144p')
-    expect(FIXED_PROFILE_INFO).toContain('1 fps')
-    expect(FIXED_PROFILE_INFO).toContain('CRF 51')
+})
+
+describe('renderConstants — options arrays', () => {
+  it('ENCODE_OPTIONS มี Software H.264', () => {
+    expect(ENCODE_OPTIONS.some((o) => o.value === 'Software (H.264)')).toBe(true)
+  })
+  it('ENCODE_OPTIONS มี NVENC H.264', () => {
+    expect(ENCODE_OPTIONS.some((o) => o.value === 'NVENC (H.264)')).toBe(true)
+  })
+  it('RESOLUTION_OPTIONS รวม 240p ถึง 1080p', () => {
+    const values = RESOLUTION_OPTIONS.map((r) => r.value)
+    expect(values).toContain('240p')
+    expect(values).toContain('1080p')
   })
 })
 

@@ -9,6 +9,8 @@
  */
 
 import type {
+  AudioFolderChangedPayload,
+  EncoderDiag,
   LegacyElectronIpc,
   PresetMap,
   RenderBatchArgs,
@@ -55,6 +57,7 @@ function savePresets(map: PresetMap) {
 
 type ProgressCallback = (payload: RenderProgressPayload) => void
 let progressUnsubscribe: (() => void) | null = null
+let audioFolderUnsubscribe: (() => void) | null = null
 
 export function installElectronIpcShim() {
   if (typeof window === 'undefined') return
@@ -140,6 +143,8 @@ export function installElectronIpcShim() {
     async startBatchCoverRender(args: RenderBatchArgs): Promise<RenderSummary> {
       const r = inkstudio.render
       if (!r) throw new Error('โมดูล render ยังไม่ wire')
+      /** ใช้ introPath ถ้ามี (INKIDEA shape) — fallback ไปที่ introClipPath (legacy) */
+      const intro = args.introPath || args.introClipPath
       return r.startBatch({
         jobId: args.jobId,
         coverPath: args.useMultipleCovers ? undefined : args.imagePath,
@@ -149,7 +154,9 @@ export function installElectronIpcShim() {
         selectedAudioFiles: args.selectedAudioFiles,
         outputFolder: args.outputFolder,
         titlePrefix: args.titlePrefix,
-        introClipPath: args.introClipPath,
+        introPath: intro,
+        introClipPath: intro,
+        doneFolder: args.doneFolder,
         encodeOption: args.encodeOption,
         crfValue: args.crfValue,
         resolutionLabel: args.resolutionLabel as '144p' | '240p' | '360p' | '480p' | '720p' | '1080p',
@@ -191,6 +198,56 @@ export function installElectronIpcShim() {
       try { return await r.getPreferredEncoder() } catch { return '' }
     },
 
+    async diagnoseEncoder(arg?: { refresh?: boolean }): Promise<EncoderDiag> {
+      const r = inkstudio.render
+      const softwareOk = { ok: true, error: '' }
+      const fallback: EncoderDiag = {
+        preferred: 'Software (H.264)',
+        platform: typeof window !== 'undefined' ? (window.electron?.platform ?? inkstudio.platform) : undefined,
+        gpu: null,
+        nvenc: { ok: false, error: '' },
+        encoders: {
+          nvencH264: { ok: false, error: 'ไม่รองรับ' },
+          nvencHevc: { ok: false, error: 'ไม่รองรับ' },
+          vtH264: { ok: false, error: 'ไม่รองรับ' },
+          vtHevc: { ok: false, error: 'ไม่รองรับ' },
+          software: softwareOk,
+        },
+      }
+      if (!r?.diagnoseEncoder) return fallback
+      try {
+        return await r.diagnoseEncoder(arg?.refresh)
+      } catch {
+        return fallback
+      }
+    },
+
+    async watchAudioFolder(arg: { folderPath: string }): Promise<{ watching: boolean }> {
+      const r = inkstudio.render
+      if (!r?.watchAudioFolder) return { watching: false }
+      try { return await r.watchAudioFolder(arg.folderPath) } catch { return { watching: false } }
+    },
+
+    async unwatchAudioFolder(): Promise<{ watching: boolean }> {
+      const r = inkstudio.render
+      if (!r?.unwatchAudioFolder) return { watching: false }
+      try { return await r.unwatchAudioFolder() } catch { return { watching: false } }
+    },
+
+    onAudioFolderChanged(cb: (payload: AudioFolderChangedPayload) => void): void {
+      const r = inkstudio.render
+      if (!r?.onAudioFolderChanged) return
+      if (audioFolderUnsubscribe) audioFolderUnsubscribe()
+      audioFolderUnsubscribe = r.onAudioFolderChanged(cb)
+    },
+
+    offAudioFolderChanged(): void {
+      if (audioFolderUnsubscribe) {
+        audioFolderUnsubscribe()
+        audioFolderUnsubscribe = null
+      }
+    },
+
     // ---------- presets (localStorage) ----------
     async listPresets(): Promise<PresetMap> {
       return loadPresets()
@@ -209,5 +266,5 @@ export function installElectronIpcShim() {
     },
   }
 
-  window.electron = { ipc }
+  window.electron = { ipc, platform: inkstudio.platform }
 }

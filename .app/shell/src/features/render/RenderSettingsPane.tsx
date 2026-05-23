@@ -1,9 +1,6 @@
 /**
  * RenderSettingsPane — เนื้อหาของแท็บตรึง "ตั้งค่าคลิป"
- *
- * INKSTUDIO ตัด section encoding + presets ออก — profile fix ที่
- * 144p · 1 fps · CRF 51 · Software H.264 · preset ultrafast
- * (เร็วสุด ทรัพยากรน้อยสุด — UI ไม่ต้องให้ user เลือก)
+ * ใช้ HubIdeSettingsShell เหมือนแท็บอื่น (เสียง / ตรวจ)
  */
 
 import { useState } from 'react'
@@ -11,9 +8,11 @@ import { Codicon, HubSettingsBadge } from '@shared/ui'
 import { HubIdeSettingsShell } from '@/workspace/HubIdeSettingsShell'
 import { useRender } from './useRender'
 import type { useRenderJob } from './useRenderJob'
-import { BUG_REPORT_MAILTO, FIXED_PROFILE_INFO } from './renderConstants'
+import { BUG_REPORT_MAILTO } from './renderConstants'
 import { RenderOverviewSection } from './sections/RenderOverviewSection'
 import { RenderSourceSection } from './sections/RenderSourceSection'
+import { RenderEncodingSection } from './sections/RenderEncodingSection'
+import { RenderPresetsSection } from './sections/RenderPresetsSection'
 import { RenderFilesSection } from './sections/RenderFilesSection'
 import { RenderProgressSection } from './sections/RenderProgressSection'
 import { RenderQuickActions } from './sections/RenderQuickActions'
@@ -22,7 +21,7 @@ type JobBridge = ReturnType<typeof useRenderJob>
 
 const PINNED_LABEL = 'ตั้งค่าคลิป'
 
-type SectionId = 'overview' | 'source' | 'files' | 'progress'
+type SectionId = 'overview' | 'source' | 'encoding' | 'presets' | 'files' | 'progress'
 
 export function RenderSettingsPane({ job }: { job: JobBridge }) {
   const audioFiles = useRender((s) => s.audioFiles)
@@ -35,6 +34,7 @@ export function RenderSettingsPane({ job }: { job: JobBridge }) {
   const total = audioFiles.length
   const selected = selectedAudioFiles.size
   const filesBadge = total === 0 ? undefined : `${selected}/${total}`
+  const heroSubtitle = 'นิยายเสียง · ภาพนิ่ง + เสียง'
 
   const heroMeta = (
     <div className="flex items-center gap-2">
@@ -56,9 +56,9 @@ export function RenderSettingsPane({ job }: { job: JobBridge }) {
       navLabel={PINNED_LABEL}
       navFooter={<RenderQuickActions job={job} />}
       title={PINNED_LABEL}
-      titleTooltip={`เรนเดอร์คลิปจากภาพปก + เสียง · ${FIXED_PROFILE_INFO}`}
+      titleTooltip="สร้างวิดีโอจากภาพปก + เสียง — เลือกไฟล์ ตั้งคุณภาพ แล้วกดเริ่มทำคลิป"
       heroIcon={<Codicon name="device-camera-video" size={18} />}
-      heroSubtitle={FIXED_PROFILE_INFO}
+      heroSubtitle={heroSubtitle}
       heroMeta={heroMeta}
       activeSectionId={activeSection}
       onActiveSectionChange={(id) => setActiveSection(id as SectionId)}
@@ -71,25 +71,39 @@ export function RenderSettingsPane({ job }: { job: JobBridge }) {
         },
         {
           id: 'source',
-          label: 'แหล่งข้อมูล',
+          label: 'ไฟล์ที่ใช้',
           icon: <Codicon name="folder-opened" />,
           step: 1,
           content: <RenderSourceSection job={job} />,
         },
         {
-          id: 'files',
-          label: 'ไฟล์เสียง',
-          icon: <Codicon name="music" />,
+          id: 'encoding',
+          label: 'คุณภาพวิดีโอ',
+          icon: <Codicon name="settings-gear" />,
           step: 2,
+          content: <RenderEncodingSection />,
+        },
+        {
+          id: 'presets',
+          label: 'ค่าที่จำไว้',
+          icon: <Codicon name="bookmark" />,
+          step: 3,
+          content: <RenderPresetsSection job={job} />,
+        },
+        {
+          id: 'files',
+          label: 'เลือกตอนที่จะทำ',
+          icon: <Codicon name="music" />,
+          step: 4,
           badge: filesBadge,
           badgeTone: selected > 0 ? 'info' : 'neutral',
           content: <RenderFilesSection job={job} />,
         },
         {
           id: 'progress',
-          label: 'เรนเดอร์',
+          label: 'เริ่มทำคลิป',
           icon: <Codicon name={busy ? 'loading' : 'play-circle'} />,
-          step: 3,
+          step: 5,
           tone: busy ? 'info' : error ? 'danger' : 'success',
           content: <RenderProgressSection job={job} />,
         },

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
-import { cn, zoneCanvasShell, zonePasteboard } from '@shared/ui'
-import { ArrowDown, ArrowUp, ImagePlus, Move, Redo2, RotateCcw, Undo2 } from 'lucide-react'
+import { cn, Codicon, zoneCanvasShell, zonePasteboard } from '@shared/ui'
+import { ArrowDown, ArrowUp, ImagePlus, Move, Redo2, Undo2 } from 'lucide-react'
 import { useCoverEditorCtx } from './CoverEditorContext'
 import { CANVAS_H, CANVAS_W, type InkLayerKind } from './coverEditorTypes'
 import { readBrowserFileAsDataUrl } from './coverEditorUtils'
@@ -109,11 +109,11 @@ export function CoverCanvas() {
               ปรับแปลง
             </ToolBtn>
             <ToolDivider />
-            <ToolBtn title="เลเยอร์ขึ้นหน้า (Ctrl+])" disabled={busy || !selectedLayerId} onClick={bringForwardSelected}>
+            <ToolBtn title="เลเยอร์ขึ้นหน้า" disabled={busy || !selectedLayerId} onClick={bringForwardSelected}>
               <ArrowUp className="h-[14px] w-[14px]" />
               ขึ้น
             </ToolBtn>
-            <ToolBtn title="เลเยอร์ลงหลัง (Ctrl+[)" disabled={busy || !selectedLayerId} onClick={sendBackwardSelected}>
+            <ToolBtn title="เลเยอร์ลงหลัง" disabled={busy || !selectedLayerId} onClick={sendBackwardSelected}>
               <ArrowDown className="h-[14px] w-[14px]" />
               ลง
             </ToolBtn>
@@ -132,12 +132,12 @@ export function CoverCanvas() {
             onChange={(e) => setViewZoomPercent(Number(e.target.value))}
             disabled={busy}
             className="w-full min-w-[60px] accent-vscode-focus"
-            title={`ย่อ/ขยายบนหน้าจอ — ไฟล์จริง ${CANVAS_W}×${CANVAS_H}\nCtrl+scroll = ซูมที่ตำแหน่งเมาส์ · Space+ลาก = pan\nCtrl+0 = พอดีหน้า · Ctrl+1 = ขนาดจริง 100% · Ctrl+± = ซูม±10%`}
+            title={`ย่อ/ขยายบนหน้าจอ — ไฟล์จริง ${CANVAS_W}×${CANVAS_H} · Ctrl+scroll · Ctrl+0 ปรับพอดี · Ctrl+1 ขนาดจริง`}
           />
         </div>
 
         <ToolBtn title="รีเซ็ตมุมมอง" disabled={busy} onClick={resetView}>
-          <RotateCcw className="h-[14px] w-[14px]" />
+          <Codicon name="discard" size={14} />
         </ToolBtn>
       </div>
 
@@ -171,8 +171,7 @@ export function CoverCanvas() {
             paints the box-shadow that visually marks the YouTube cover. */}
         <div
           ref={artboardFrameRef}
-          className="pointer-events-none absolute overflow-hidden"
-          style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 8px 40px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.6)' }}
+          className="pointer-events-none absolute overflow-hidden shadow-cover-artboard"
         >
           {isEmpty || dragHover ? (
             <div
@@ -187,14 +186,6 @@ export function CoverCanvas() {
                 <div className="mt-0.5 text-[11px] text-vscode-muted">
                   {dragHover ? 'กด Shift ค้างไว้เพื่อใช้เป็นพื้นหลังแทน' : 'หรือกด "อัปปก" ที่แผงด้านขวา · Shift+ลาก = พื้นหลัง'}
                 </div>
-                {!dragHover ? (
-                  <div className="mt-3 inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] tabular-nums text-vscode-muted/80">
-                    <span><kbd className="rounded-sm border border-vscode-border/60 px-1">Space</kbd>+ลาก = pan</span>
-                    <span><kbd className="rounded-sm border border-vscode-border/60 px-1">Ctrl</kbd>+scroll = ซูม</span>
-                    <span><kbd className="rounded-sm border border-vscode-border/60 px-1">Ctrl+0</kbd> = พอดีหน้า</span>
-                    <span><kbd className="rounded-sm border border-vscode-border/60 px-1">Ctrl+1</kbd> = 100%</span>
-                  </div>
-                ) : null}
               </div>
             </div>
           ) : null}

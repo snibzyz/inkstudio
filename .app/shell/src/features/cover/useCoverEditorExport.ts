@@ -21,7 +21,7 @@ export function useCoverEditorExport({ fabricRef, numberLayerIdRef, electron, se
   const [batchStart, setBatchStart] = useState<number>(1)
   const [batchEnd, setBatchEnd] = useState<number>(50)
   const [batchLength, setBatchLength] = useState<number>(50)
-  const [batchPadding, setBatchPadding] = useState<number>(3)
+  const [batchPadding, setBatchPadding] = useState<number>(4)
   const [batchOutputFolder, setBatchOutputFolder] = useState<string>(() => {
     if (projectStorageKey) {
       const saved = typeof window !== 'undefined' ? localStorage.getItem(projectStorageKey) : null
@@ -119,7 +119,9 @@ export function useCoverEditorExport({ fabricRef, numberLayerIdRef, electron, se
       )
       if (!dataUrl) return
       await electron.exportCoverPng({ dataUrl, outputPath })
-      setExportStatus('บันทึกไฟล์ปกเรียบร้อยแล้ว')
+      const outBasename = outputPath.split(/[\\/]/).pop() || 'ปก'
+      const outFolder = outputPath.split(/[\\/]/).slice(-2, -1)[0] || ''
+      setExportStatus(outFolder ? `บันทึก ${outBasename} ที่ ${outFolder}/` : `บันทึก ${outBasename}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาดในการส่งออก')
     } finally {
@@ -186,7 +188,12 @@ export function useCoverEditorExport({ fabricRef, numberLayerIdRef, electron, se
       // Restore original text
       setNumberText(numberObj, originalText)
       c.requestRenderAll()
-      setExportStatus(`ส่งออกเสร็จแล้ว ${exportedCount} ไฟล์`)
+      const folderBasename = folder.split(/[\\/]/).pop() || ''
+      setExportStatus(
+        folderBasename
+          ? `ส่งออกเสร็จ ${exportedCount} ไฟล์ที่ ${folderBasename}/`
+          : `ส่งออกเสร็จ ${exportedCount} ไฟล์`
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาดในการส่งออกแบบแบตช์')
     } finally {

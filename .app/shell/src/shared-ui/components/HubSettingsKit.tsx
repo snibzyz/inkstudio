@@ -53,3 +53,8 @@ export {
   HubSettingsStat,
   HubSettingsStatGrid,
 } from './hubSettings/HubSettingsDisplay'
+
+export {
+  HubSettingsFolderPicker,
+  type FolderPickerOption,
+} from './hubSettings/HubSettingsFolderPicker'

@@ -1,33 +1,44 @@
 /**
- * renderConstants — ค่าคงที่สำหรับ Render module
+ * renderConstants — magic numbers + preset maps สำหรับ Render
  *
- * Profile ของ INKSTUDIO: ภาพนิ่ง + เสียง → คลิป 360p · 1 fps · CRF 30 · Software H.264
- * ไม่มี toggle / machine preset / preset save — fix ค่าทั้งหมดเพื่อให้ทำงานเร็ว
- * และเล่นได้ทุกเครื่อง (ไม่ต้องพึ่ง GPU)
+ * Default ต่ำสุด/ไวสุด เพราะ use case = นิยายเสียง (ภาพนิ่ง + เสียง, 1 fps)
+ * คุณภาพภาพไม่กระทบเพราะภาพไม่ขยับ — user ยังปรับเองได้ผ่าน UI
  */
 
+/** v2: บังคับให้ default ใหม่ (CRF 30 · 240p · ultrafast) มีผลกับ user ที่เคยใช้งานแล้ว
+ *   v1 ถูกทิ้ง — custom presets ถูกโหลดใหม่จาก backend (`preset:list`) อยู่แล้ว ไม่กระทบ */
 export const STORAGE_KEY = 'inkstudio:render:options:v2'
 
 export const LOG_BUFFER_LIMIT = 200
 
-/**
- * บังคับโปรไฟล์ — ห้ามให้ user เปลี่ยน
- *
- * 144p (256×144) = ความละเอียดต่ำสุดที่ YouTube รองรับ
- * เลือกเพราะเป็นภาพนิ่ง + 1 fps → video stream เล็กมาก, encode เร็วสุด, ไฟล์เล็กสุด
- * (YouTube จะ re-encode เป็นทุก resolution ตอน upload อยู่แล้ว)
- *
- * CRF 51 = ค่าต่ำสุดที่ x264 รองรับ (แย่สุด เร็วสุด)
- * preset 'ultrafast' = ตัวเลือก speed สูงสุดของ x264 — ทรัพยากรน้อยที่สุด
- */
-export const FIXED_RESOLUTION = '144p' as const
-export const FIXED_ENCODE_OPTION = 'Software (H.264)' as const
-export const FIXED_CRF = 51 as const
-export const FIXED_FPS = 1 as const
-export const FIXED_PRESET = 'ultrafast' as const
+export const CRF_MIN = 18
+export const CRF_MAX = 30
+export const DEFAULT_CRF = CRF_MAX
+export const DEFAULT_RESOLUTION = '240p'
+export const DEFAULT_ENCODE_OPTION = 'Software (H.264)'
 
-/** baseline ค่าคงที่ที่ backend ใช้ — แสดงเป็น hint ในแถบสถานะ */
-export const FIXED_PROFILE_INFO = '144p · 1 fps · CRF 51 · ultrafast · AAC 96 kbps'
+export const RESOLUTION_OPTIONS = [
+  { value: '240p', label: '240p', hint: 'ต่ำสุด · ภาพนิ่ง' },
+  { value: '360p', label: '360p', hint: 'ต่ำ' },
+  { value: '480p', label: '480p', hint: 'ประหยัด' },
+  { value: '720p', label: '720p', hint: 'มาตรฐาน' },
+  { value: '1080p', label: '1080p', hint: 'คมชัด' },
+] as const
+
+/** เรียงตามความเร็ว: เร็วสุด → ช้าสุด
+ *  NVENC = Windows/Linux (การ์ดจอ NVIDIA) · VideoToolbox = macOS · Software = ทุกเครื่อง
+ *  RenderEncodingSection กรองโดยใช้ผลของ render:diagnose-encoder — เฉพาะตัวที่
+ *  probe ผ่านบนเครื่องเท่านั้นที่โผล่ใน dropdown (กัน user เลือกแล้ว render fail). */
+export const ENCODE_OPTIONS = [
+  { value: 'NVENC (H.264)', label: 'เร็วที่สุด — การ์ดจอ NVIDIA (H.264 · เข้ากันได้ทุกที่)' },
+  { value: 'NVENC (H.265)', label: 'การ์ดจอ NVIDIA (H.265 · ไฟล์เล็กกว่า ~40%)' },
+  { value: 'VideoToolbox (H.264)', label: 'เร็ว — ฮาร์ดแวร์ Mac (H.264)' },
+  { value: 'VideoToolbox (H.265)', label: 'ฮาร์ดแวร์ Mac (H.265 · ไฟล์เล็กกว่า)' },
+  { value: 'Software (H.264)', label: 'ช้าสุด — CPU (H.264 · ใช้ได้ทุกเครื่อง)' },
+] as const
+
+/** baseline ค่าคงที่ที่ backend ใช้ — แสดงเป็น hint เท่านั้น */
+export const FIXED_AUDIO_INFO = '1 fps · AAC 192 kbps · 44.1 kHz · YUV420P'
 
 /** mailto bug report — ใช้ใน hero meta */
 export const BUG_REPORT_MAILTO =

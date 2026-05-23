@@ -1,11 +1,17 @@
 /**
- * Tests สำหรับ useRender store
+ * Tests สำหรับ useRender store (INKIDEA-shaped)
  * — ตรวจ initial state + setters + actions
- * — ตรวจ persist introClipPath ลง localStorage
+ * — ตรวจ persist encoding + intro + presets ลง localStorage
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { FIXED_CRF, FIXED_ENCODE_OPTION, FIXED_RESOLUTION, LOG_BUFFER_LIMIT, STORAGE_KEY } from '../renderConstants'
+import {
+  DEFAULT_CRF,
+  DEFAULT_ENCODE_OPTION,
+  DEFAULT_RESOLUTION,
+  LOG_BUFFER_LIMIT,
+  STORAGE_KEY,
+} from '../renderConstants'
 
 beforeEach(async () => {
   if (typeof localStorage !== 'undefined') localStorage.clear()
@@ -22,15 +28,17 @@ describe('useRender — initial state', () => {
     expect(s.coverFolder).toBe('')
     expect(s.useMultipleCovers).toBe(false)
     expect(s.titlePrefix).toBe('')
-    expect(s.introClipPath).toBe('')
+    expect(s.introPath).toBe('')
+    expect(s.useIntro).toBe(false)
   })
 
-  it('encoding fixed ที่ค่า profile', async () => {
+  it('encoding default ตาม renderConstants', async () => {
     const { useRender } = await import('../useRender')
     const s = useRender.getState()
-    expect(s.encodeOption).toBe(FIXED_ENCODE_OPTION)
-    expect(s.crfValue).toBe(FIXED_CRF)
-    expect(s.resolution).toBe(FIXED_RESOLUTION)
+    expect(s.encodeOption).toBe(DEFAULT_ENCODE_OPTION)
+    expect(s.crfValue).toBe(DEFAULT_CRF)
+    expect(s.resolution).toBe(DEFAULT_RESOLUTION)
+    expect(s.encoderUserSet).toBe(false)
   })
 
   it('job state เริ่มเป็น idle', async () => {
@@ -62,21 +70,55 @@ describe('useRender — source setters', () => {
     expect(useRender.getState().useMultipleCovers).toBe(true)
   })
 
-  it('setIntroClipPath เซ็ตค่า + persist localStorage', async () => {
+  it('setIntroPath + setUseIntro persist localStorage', async () => {
     const { useRender } = await import('../useRender')
-    useRender.getState().setIntroClipPath('Z:/intro.mp4')
-    expect(useRender.getState().introClipPath).toBe('Z:/intro.mp4')
+    useRender.getState().setIntroPath('Z:/intro.mp4')
+    useRender.getState().setUseIntro(true)
+    expect(useRender.getState().introPath).toBe('Z:/intro.mp4')
+    expect(useRender.getState().useIntro).toBe(true)
     // persist เป็น debounce 120ms — รอแล้วเช็ค
     await new Promise((r) => setTimeout(r, 200))
     const raw = localStorage.getItem(STORAGE_KEY)
     expect(raw).not.toBeNull()
-    expect(JSON.parse(raw!).introClipPath).toBe('Z:/intro.mp4')
+    const parsed = JSON.parse(raw!)
+    expect(parsed.introPath).toBe('Z:/intro.mp4')
+    expect(parsed.useIntro).toBe(true)
   })
 
-  it('load persisted introClipPath ตอน boot', async () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ introClipPath: 'Z:/saved.mp4' }))
+  it('load persisted introPath ตอน boot', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ introPath: 'Z:/saved.mp4', useIntro: true }))
     const { useRender } = await import('../useRender')
-    expect(useRender.getState().introClipPath).toBe('Z:/saved.mp4')
+    expect(useRender.getState().introPath).toBe('Z:/saved.mp4')
+    expect(useRender.getState().useIntro).toBe(true)
+  })
+})
+
+describe('useRender — encoding setters', () => {
+  it('setEncodeOption (manual) flips encoderUserSet=true', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().setEncodeOption('NVENC (H.264)')
+    expect(useRender.getState().encodeOption).toBe('NVENC (H.264)')
+    expect(useRender.getState().encoderUserSet).toBe(true)
+  })
+
+  it('setEncodeOption (auto) does NOT flip encoderUserSet', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().setEncodeOption('NVENC (H.264)', { auto: true })
+    expect(useRender.getState().encodeOption).toBe('NVENC (H.264)')
+    expect(useRender.getState().encoderUserSet).toBe(false)
+  })
+
+  it('applyDetectedEncoder respects user choice', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().setEncodeOption('Software (H.264)') // user pick
+    useRender.getState().applyDetectedEncoder('NVENC (H.264)')
+    expect(useRender.getState().encodeOption).toBe('Software (H.264)')
+  })
+
+  it('applyDetectedEncoder applies when user has NOT chosen', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().applyDetectedEncoder('NVENC (H.264)')
+    expect(useRender.getState().encodeOption).toBe('NVENC (H.264)')
   })
 })
 
@@ -105,6 +147,29 @@ describe('useRender — files selection', () => {
     expect(useRender.getState().selectedAudioFiles.has('a.mp3')).toBe(true)
     useRender.getState().toggleAudioFile('a.mp3')
     expect(useRender.getState().selectedAudioFiles.has('a.mp3')).toBe(false)
+  })
+})
+
+describe('useRender — presets', () => {
+  it('applyPreset เซ็ตทุกฟิลด์ + flip encoderUserSet=true', async () => {
+    const { useRender } = await import('../useRender')
+    useRender.getState().applyPreset({
+      image_path: 'Z:/cover.png',
+      audio_folder: '/a',
+      output_folder: '/o',
+      cover_folder: '/c',
+      use_multiple_covers: true,
+      title_prefix: 'EP',
+      encode_option: 'NVENC (H.265)',
+      crf_value: 25,
+      resolution: '720p',
+    })
+    const s = useRender.getState()
+    expect(s.imagePath).toBe('Z:/cover.png')
+    expect(s.encodeOption).toBe('NVENC (H.265)')
+    expect(s.crfValue).toBe(25)
+    expect(s.resolution).toBe('720p')
+    expect(s.encoderUserSet).toBe(true)
   })
 })
 

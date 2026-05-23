@@ -1,24 +1,23 @@
 /**
- * useRenderJob — bridge ระหว่าง useRender store กับ render:* / fs:* IPC handlers
+ * useRenderJob — bridge ระหว่าง useRender store กับ render:* / preset:* / fs:* IPC handlers
  *
  * ส่งคืน callbacks ที่ใช้ใน sections — ไม่เก็บ state เอง (state อยู่ใน useRender)
  * Subscribe progress event ครั้งเดียวต่อ mount + cancel job เมื่อ user สลับโหมดออก
  *
- * IPC ที่ใช้:
- *   - fs:list-audio-files    → list audio files ในโฟลเดอร์
- *   - render:start-batch-cover  → เริ่ม render
- *   - render:cancel-job      → หยุด render
- *   - dialog:select-files    → เปิด open dialog
- *   - render:progress event  → progress payload
- *
- * Profile บังคับ: 360p · 1 fps · CRF 30 · Software H.264 · preset ultrafast
- *                  (ค่า fix ทั้งหมดเพื่อความเร็ว — ไม่ให้ user แก้)
+ * IPC ที่ใช้ (read-only contract — ห้ามแก้ใน backend):
+ *   - preset:list / preset:save / preset:delete   → store presets
+ *   - render:get-preferred-encoder                 → suggested encoder ตาม GPU เครื่อง
+ *   - fs:list-audio-files                          → list audio files ในโฟลเดอร์
+ *   - render:start-batch-cover                     → เริ่ม render
+ *   - render:cancel-job                            → หยุด render
+ *   - dialog:select-files                          → เปิด open dialog
+ *   - render:progress event                        → progress payload
  */
 
 import { useCallback, useEffect, useRef } from 'react'
-import { useRender } from './useRender'
-import { INTRO_VIDEO_EXTENSIONS } from './renderConstants'
-import type { ProgressPayload } from './renderTypes'
+import { useHubWorkspace } from '@/state/useHubWorkspace'
+import { useRender, buildBatchPresetFromState } from './useRender'
+import type { PresetMap, ProgressPayload } from './renderTypes'
 
 function newId() {
   const anyCrypto = typeof crypto !== 'undefined' ? (crypto as unknown as { randomUUID?: () => string }) : undefined
@@ -36,6 +35,26 @@ function formatSeconds(seconds: number) {
 export function useRenderJob({ programActive }: { programActive: boolean }) {
   const electron = typeof window !== 'undefined' ? window.electron?.ipc : undefined
   const jobIdRef = useRef<string | null>(null)
+  const audioFolder = useRender((s) => s.audioFolder)
+
+  /** Hydrate presets + preferred encoder ครั้งแรกเมื่อ component mount */
+  useEffect(() => {
+    if (!electron) return
+    void electron
+      .listPresets()
+      .then((data) => useRender.getState().setPresets((data as PresetMap) ?? {}))
+      .catch(() => useRender.getState().setPresets({}))
+    /** auto-detect encoder — ถ้ามี NVIDIA GPU จะใช้ NVENC H.264 (เร็วกว่า + compat)
+     *  applyDetectedEncoder จะไม่แก้ทับถ้า user เคยเลือกเองมาก่อน */
+    void electron
+      .getPreferredEncoder()
+      .then((value) => {
+        if (typeof value === 'string' && value) {
+          useRender.getState().applyDetectedEncoder(value)
+        }
+      })
+      .catch(() => {})
+  }, [electron])
 
   /** Subscribe render:progress event — ตลอดอายุ component */
   useEffect(() => {
@@ -54,7 +73,10 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
       if (payload.message) store.appendLog(payload.message)
       if (payload.summary) {
         const s = payload.summary
-        let msg = `เสร็จ: ${s.successCount}/${s.totalFiles} ไฟล์ · ${formatSeconds(s.elapsedSeconds)}`
+        const project = useHubWorkspace.getState().activeProject
+        const projectName = project?.title || project?.slug || 'โปรเจกต์'
+        const outputBasename = (store.outputFolder.split(/[\\/]/).pop() || 'output') + '/'
+        let msg = `เสร็จ: ${s.successCount}/${s.totalFiles} ไฟล์ · ${formatSeconds(s.elapsedSeconds)} · บันทึกใน ${projectName} ที่ ${outputBasename}`
         if (s.missingCovers.length > 0) msg += `\nข้ามปก: ${s.missingCovers.length} ไฟล์`
         if (s.skippedCount > 0) msg += `\nข้ามซ้ำ: ${s.skippedCount} ไฟล์`
         store.setSummaryText(msg)
@@ -78,6 +100,20 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
       jobIdRef.current = null
     })
   }, [programActive, electron])
+
+  /** watcher-based (push, ไม่ poll) — เฝ้าดูโฟลเดอร์เสียงที่ active อยู่
+   *  ไฟล์เสียงเพิ่ม/ลบ/เปลี่ยนชื่อ → backend ส่ง event 'render:audio-folder-changed' */
+  useEffect(() => {
+    if (!electron?.watchAudioFolder || !electron?.unwatchAudioFolder) return
+    if (audioFolder) {
+      void electron.watchAudioFolder({ folderPath: audioFolder })
+    } else {
+      void electron.unwatchAudioFolder()
+    }
+    return () => {
+      void electron.unwatchAudioFolder?.()
+    }
+  }, [electron, audioFolder])
 
   const refreshAudioPreview = useCallback(
     async (overrideFolder?: string) => {
@@ -111,6 +147,22 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
     [electron]
   )
 
+  /** รับ push event ตอนโฟลเดอร์เสียงเปลี่ยน → โหลดรายการตอนใหม่
+   *  รีเฟรชเฉพาะเมื่อ event ตรงโฟลเดอร์ที่กำลังดู และไม่ได้กำลังเรนเดอร์อยู่ */
+  useEffect(() => {
+    if (!electron?.onAudioFolderChanged || !electron?.offAudioFolderChanged) return
+    electron.onAudioFolderChanged((data) => {
+      const current = useRender.getState().audioFolder
+      if (!current) return
+      if (data.folderPath && data.folderPath !== current) return
+      if (useRender.getState().busy) return
+      void refreshAudioPreview()
+    })
+    return () => {
+      electron.offAudioFolderChanged()
+    }
+  }, [electron, refreshAudioPreview])
+
   const chooseImage = useCallback(async () => {
     if (!electron) return
     const selected = await electron.selectFiles({
@@ -118,6 +170,20 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
       filters: [{ name: 'ไฟล์รูปภาพ', extensions: ['png', 'jpg', 'jpeg'] }],
     })
     if (selected[0]) useRender.getState().setImagePath(selected[0])
+  }, [electron])
+
+  const chooseIntro = useCallback(async () => {
+    if (!electron) return
+    const selected = await electron.selectFiles({
+      properties: ['openFile'],
+      filters: [{ name: 'ไฟล์วิดีโอ', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi'] }],
+    })
+    if (selected[0]) {
+      const s = useRender.getState()
+      s.setIntroPath(selected[0])
+      /** เลือกไฟล์ใหม่ = เปิดใช้ intro อัตโนมัติ */
+      if (!s.useIntro) s.setUseIntro(true)
+    }
   }, [electron])
 
   const chooseFolder = useCallback(
@@ -141,13 +207,46 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
     }
   }, [electron, refreshAudioPreview])
 
-  const chooseIntroClip = useCallback(async () => {
+  const savePresetCustom = useCallback(async () => {
     if (!electron) return
-    const selected = await electron.selectFiles({
-      properties: ['openFile'],
-      filters: [{ name: 'ไฟล์วิดีโอ', extensions: [...INTRO_VIDEO_EXTENSIONS] }],
-    })
-    if (selected[0]) useRender.getState().setIntroClipPath(selected[0])
+    const s = useRender.getState()
+    const name = s.presetName.trim()
+    if (!name) {
+      s.setError('กรุณาระบุชื่อพรีเซ็ตก่อนบันทึก')
+      return
+    }
+    const data = buildBatchPresetFromState(s)
+    const next = (await electron.savePreset({ name, data })) as PresetMap
+    s.setPresets(next)
+    s.setSelectedPresetName(name)
+    s.setError(null)
+    s.setStatus('บันทึกพรีเซ็ตเรียบร้อยแล้ว')
+  }, [electron])
+
+  const loadPresetCustom = useCallback(async () => {
+    const s = useRender.getState()
+    const name = s.selectedPresetName
+    if (!name || !s.presets[name]) {
+      s.setError('กรุณาเลือกพรีเซ็ตจากรายการก่อน')
+      return
+    }
+    s.applyPreset(s.presets[name])
+    s.setError(null)
+    s.setStatus('โหลดพรีเซ็ตเรียบร้อยแล้ว')
+    await refreshAudioPreview(s.presets[name].audio_folder ?? '')
+  }, [refreshAudioPreview])
+
+  const deletePresetCustom = useCallback(async () => {
+    if (!electron) return
+    const s = useRender.getState()
+    if (!s.selectedPresetName) {
+      s.setError('กรุณาเลือกพรีเซ็ตที่ต้องการลบก่อน')
+      return
+    }
+    const next = (await electron.deletePreset({ name: s.selectedPresetName })) as PresetMap
+    s.setPresets(next)
+    s.setSelectedPresetName('')
+    s.setStatus('ลบพรีเซ็ตเรียบร้อยแล้ว')
   }, [electron])
 
   const startRender = useCallback(async () => {
@@ -193,17 +292,18 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
         coverFolder: s.coverFolder,
         useMultipleCovers: s.useMultipleCovers,
         titlePrefix: s.titlePrefix,
-        introClipPath: s.introClipPath || undefined,
-        /** profile fix: ทุกค่าตั้งไว้เพื่อความเร็ว + ทรัพยากรน้อย */
         encodeOption: s.encodeOption,
         crfValue: s.crfValue,
         resolutionLabel: s.resolution,
-        fps: 1,
-        preset: 'ultrafast',
+        introPath: s.useIntro ? s.introPath : '',
         overwriteMode: 'ask',
         selectedAudioFiles: Array.from(s.selectedAudioFiles),
       })
-      let msg = `เสร็จ: ${summary.successCount}/${summary.totalFiles} ไฟล์ · ${formatSeconds(summary.elapsedSeconds)}`
+      /** เพิ่ม "บันทึกใน <project> ที่ <folder>" ให้ user เห็นว่าวิดีโอออกที่ไหน */
+      const project = useHubWorkspace.getState().activeProject
+      const projectName = project?.title || project?.slug || 'โปรเจกต์'
+      const outputBasename = (s.outputFolder.split(/[\\/]/).pop() || 'output') + '/'
+      let msg = `เสร็จ: ${summary.successCount}/${summary.totalFiles} ไฟล์ · ${formatSeconds(summary.elapsedSeconds)} · บันทึกใน ${projectName} ที่ ${outputBasename}`
       if (summary.missingCovers.length > 0) msg += `\nข้ามปก: ${summary.missingCovers.length} ไฟล์`
       if (summary.skippedCount > 0) msg += `\nข้ามซ้ำ: ${summary.skippedCount} ไฟล์`
       const after = useRender.getState()
@@ -233,9 +333,12 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
   return {
     refreshAudioPreview,
     chooseImage,
+    chooseIntro,
     chooseFolder,
     chooseAudioFolder,
-    chooseIntroClip,
+    savePresetCustom,
+    loadPresetCustom,
+    deletePresetCustom,
     startRender,
     cancelRender,
   }

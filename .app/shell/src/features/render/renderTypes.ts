@@ -1,12 +1,23 @@
 /**
  * renderTypes — TypeScript types สำหรับโมดูล Render
- *   - ProgressPayload: payload จาก render:progress event
+ *   - BatchPreset: ชุด config ที่ผู้ใช้บันทึก/โหลดเป็น preset
+ *   - ProgressPayload: payload จาก render:* progress event
  *   - RenderSummary: สรุปผลตอนเรนเดอร์เสร็จ
- *   - PersistedRenderOptions: state ที่ persist ลง localStorage
- *
- * Note: INKSTUDIO ตัด machine preset / encoding options / batch preset ออก —
- *       profile ถูก fix ที่ 360p · 1 fps · CRF 30 · Software H.264
  */
+
+export type PresetMap = Record<string, BatchPreset>
+
+export type BatchPreset = {
+  image_path: string
+  audio_folder: string
+  output_folder: string
+  cover_folder: string
+  use_multiple_covers: boolean
+  title_prefix: string
+  encode_option: string
+  crf_value: number
+  resolution: string
+}
 
 export type ProgressPayload = {
   jobId: string
@@ -32,13 +43,32 @@ export type RenderSummary = {
   resolutionLabel: string
 }
 
+export type EncodeOptionValue =
+  | 'NVENC (H.264)'
+  | 'NVENC (H.265)'
+  | 'VideoToolbox (H.264)'
+  | 'VideoToolbox (H.265)'
+  | 'Software (H.264)'
+  | 'NVIDIA NVENC (H.264)'
+
+export type ResolutionValue = '240p' | '360p' | '480p' | '720p' | '1080p'
+
 export type FilesEntry = {
   fileName: string
   selected: boolean
 }
 
-/** ข้อมูลที่ persist ใน localStorage */
+/** ข้อมูลที่ persist ใน localStorage (key inkstudio:render:options:v2) */
 export type PersistedRenderOptions = {
-  /** path ของ intro clip ล่าสุดที่ user เลือก — จำไว้ให้ครั้งหน้า */
-  introClipPath?: string
+  encodeOption: string
+  /** user เปลี่ยน encoder เองหรือยัง — false = ระบบ auto-detect ใหม่ได้ทุกครั้งที่ mount
+   *  true = ใช้ค่าที่ user เลือก ไม่แก้ทับ */
+  encoderUserSet?: boolean
+  crfValue: number
+  resolution: string
+  /** path ของวิดีโอ intro ที่ user เลือกล่าสุด (จำข้ามเซสชัน) */
+  introPath?: string
+  /** เปิด/ปิดการแทรก intro */
+  useIntro?: boolean
+  presets?: PresetMap
 }

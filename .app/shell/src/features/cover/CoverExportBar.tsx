@@ -1,7 +1,20 @@
 import { useState } from 'react'
-import { Download, FolderOpen, Settings } from 'lucide-react'
-import { AppButton, hubSettingsInputClass, IdeDialog } from '@shared/ui'
+import { Download, Settings } from 'lucide-react'
+import { AppButton, Codicon, hubSettingsInputClass, HubSettingsFolderPicker, IdeDialog } from '@shared/ui'
 import { useCoverEditorCtx } from './CoverEditorContext'
+import { useHubWorkspace } from '@/state/useHubWorkspace'
+
+/** INKSTUDIO ไม่มี workspace concept — identity convert (abs ↔ rel เป็น path เดียวกัน) */
+function absToWorkspaceRel(abs: string, _root: string): string | null {
+  return abs || null
+}
+function joinAbsPath(_root: string, rel: string): string {
+  return rel
+}
+/** ไม่มี project folder options — คืน [] ตลอด */
+function useProjectFolderOptions() {
+  return { folders: [] as Array<{ rel: string; label: string }>, reload: async () => {} }
+}
 
 type ExportStep = 'choose' | 'batch'
 
@@ -36,6 +49,21 @@ export function CoverExportBar() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportStep, setExportStep] = useState<ExportStep>('choose')
+
+  const workspaceRoot = useHubWorkspace((s) => s.workspaceRoot) ?? ''
+  const openFolder = useHubWorkspace((s) => s.openFolder)
+  const { folders: projectFolders, reload: reloadProjectFolders } = useProjectFolderOptions()
+
+  /** abs ↔ rel converters — picker ใช้ rel, store ของ cover เก็บ abs สำหรับส่งให้ native picker/electron */
+  const toRel = (abs: string): string => {
+    if (!abs) return ''
+    return absToWorkspaceRel(abs, workspaceRoot) ?? ''
+  }
+  const toAbs = (rel: string): string => {
+    if (!rel) return ''
+    return workspaceRoot ? joinAbsPath(workspaceRoot, rel) : rel
+  }
+  const folderOptions = projectFolders.map((f) => ({ rel: f.rel, label: f.label }))
 
   function openExportModal() {
     setExportStep('choose')
@@ -142,24 +170,17 @@ export function CoverExportBar() {
 
           <div>
             <div className="mb-1.5 text-[11px] font-medium text-vscode-fg-dim">โฟลเดอร์ส่งออก (แบตช์)</div>
-            <div className="flex gap-2">
-              <input
-                value={batchOutputFolder}
-                onChange={(e) => setBatchOutputFolder(e.target.value)}
-                placeholder="เลือกโฟลเดอร์…"
-                className={`${hubSettingsInputClass} flex-1`}
-              />
-              <AppButton
-                tone="zinc"
-                variant="flat"
-                title="เลือกโฟลเดอร์"
-                onPress={() => void chooseFolder(setBatchOutputFolder)}
-                className="min-h-8 gap-1.5 px-3 text-[12px]"
-              >
-                <FolderOpen className="h-3.5 w-3.5" />
-                เลือก
-              </AppButton>
-            </div>
+            <HubSettingsFolderPicker
+              icon={<Codicon name="folder-active" />}
+              label="ปลายทาง"
+              value={toRel(batchOutputFolder)}
+              onChange={(rel) => setBatchOutputFolder(toAbs(rel))}
+              options={folderOptions}
+              onBrowse={() => chooseFolder(setBatchOutputFolder)}
+              onReload={() => reloadProjectFolders()}
+              onOpen={batchOutputFolder ? () => openFolder(batchOutputFolder) : undefined}
+              placeholder="เลือกโฟลเดอร์…"
+            />
           </div>
         </div>
       </IdeDialog>
@@ -218,26 +239,17 @@ export function CoverExportBar() {
             {/* Folder */}
             <div>
               <div className="mb-1.5 text-[11px] font-medium text-vscode-fg-dim">โฟลเดอร์ปลายทาง</div>
-              <div className="flex gap-2">
-                <input
-                  value={batchOutputFolder}
-                  onChange={(e) => setBatchOutputFolder(e.target.value)}
-                  disabled={busy}
-                  placeholder="เลือกโฟลเดอร์…"
-                  className={`${hubSettingsInputClass} flex-1`}
-                />
-                <AppButton
-                  tone="zinc"
-                  variant="flat"
-                  title="เลือกโฟลเดอร์"
-                  disabled={busy}
-                  onPress={() => void chooseFolder(setBatchOutputFolder)}
-                  className="min-h-8 gap-1.5 px-3 text-[12px]"
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  เลือก
-                </AppButton>
-              </div>
+              <HubSettingsFolderPicker
+                icon={<Codicon name="folder-active" />}
+                label="ปลายทาง"
+                value={toRel(batchOutputFolder)}
+                onChange={(rel) => setBatchOutputFolder(toAbs(rel))}
+                options={folderOptions}
+                onBrowse={() => chooseFolder(setBatchOutputFolder)}
+                onReload={() => reloadProjectFolders()}
+                onOpen={batchOutputFolder ? () => openFolder(batchOutputFolder) : undefined}
+                placeholder="เลือกโฟลเดอร์…"
+              />
             </div>
 
             {/* Range */}

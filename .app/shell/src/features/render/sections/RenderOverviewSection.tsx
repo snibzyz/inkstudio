@@ -12,12 +12,13 @@ import {
   HubSettingsStatGrid,
 } from '@shared/ui'
 import { useRender } from '../useRender'
-import { FIXED_PROFILE_INFO } from '../renderConstants'
 
 export function RenderOverviewSection() {
   const audioFiles = useRender((s) => s.audioFiles)
   const selectedAudioFiles = useRender((s) => s.selectedAudioFiles)
-  const introClipPath = useRender((s) => s.introClipPath)
+  const encodeOption = useRender((s) => s.encodeOption)
+  const resolution = useRender((s) => s.resolution)
+  const crfValue = useRender((s) => s.crfValue)
   const status = useRender((s) => s.status)
   const progress = useRender((s) => s.progress)
   const etaText = useRender((s) => s.etaText)
@@ -75,15 +76,11 @@ export function RenderOverviewSection() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
           <span className="text-vscode-fg">{status}</span>
           <span className="text-vscode-muted">·</span>
-          <span className="text-vscode-fg-dim">{FIXED_PROFILE_INFO}</span>
+          <span className="text-vscode-fg-dim">{encodeOption}</span>
           <span className="text-vscode-muted">·</span>
-          <span className="text-vscode-fg-dim">preset ultrafast</span>
-          {introClipPath ? (
-            <>
-              <span className="text-vscode-muted">·</span>
-              <span className="text-vscode-fg-dim">+ อินโทร</span>
-            </>
-          ) : null}
+          <span className="text-vscode-fg-dim">{resolution}</span>
+          <span className="text-vscode-muted">·</span>
+          <span className="text-vscode-fg-dim">CRF {crfValue}</span>
           {busy ? (
             <>
               <span className="text-vscode-muted">·</span>

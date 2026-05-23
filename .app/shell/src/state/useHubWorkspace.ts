@@ -24,6 +24,7 @@ type ReadDataUrlResult = {
 type ProjectStub = {
   id?: string
   slug?: string
+  title?: string
   workspaceRelRoot?: string
   resolved?: {
     id: string
@@ -39,15 +40,22 @@ type ProjectStub = {
   }
 }
 
+type WorkspaceDirEntry = { name: string; isDirectory: boolean; relPath: string }
+
 type HubWorkspaceState = {
   activeProjectId: string | null
   activeProject: ProjectStub | null
   workspaceRoot: string | null
+  workspaceLabel: string
   workspaceOpenFilePath: string | null
   hubWorkspaceActiveMode: Mode
+  /** true เสมอใน INKSTUDIO — ไม่มี async hydrate */
+  hasHydrated: boolean
 
   hydrate: () => Promise<void>
   getActiveProjectRelRoot: () => string | null
+  /** no-op ใน INKSTUDIO — คืน [] เสมอ */
+  listWorkspaceRelDir: (rel: string) => Promise<WorkspaceDirEntry[]>
 
   requestWorkspaceFileOpen: (rel: string | null) => void
   requestExplorerReveal: (path: string) => void
@@ -81,11 +89,14 @@ export const useHubWorkspace = create<HubWorkspaceState>(() => ({
   activeProjectId: 'inkstudio',
   activeProject: null,
   workspaceRoot: null,
+  workspaceLabel: '',
   workspaceOpenFilePath: null,
   hubWorkspaceActiveMode: 'cover',
+  hasHydrated: true,
 
   hydrate: async () => { /* no workspace concept in INKSTUDIO */ },
   getActiveProjectRelRoot: () => null,
+  listWorkspaceRelDir: async () => [],
 
   requestWorkspaceFileOpen: () => { /* no-op — tabs disabled */ },
 

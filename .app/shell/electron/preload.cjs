@@ -123,14 +123,21 @@ contextBridge.exposeInMainWorld('inkstudio', {
   },
 
   // ─── render (โมดูลเรนเดอร์คลิป) ──────────────────────────────────────────
-  // Profile fix ฝั่ง renderer: 144p · 1 fps · CRF 51 · Software H.264 · preset ultrafast
-  // main process รับ args (introClipPath, fps, preset, resolutionLabel) แล้ว build FFmpeg cmd
+  // Channels = INKIDEA shape (ports จาก INKIDEA's render IPC):
+  //   render:start-batch-cover / render:cancel-job / render:get-preferred-encoder
+  //   render:diagnose-encoder / render:watch-audio-folder / render:unwatch-audio-folder
+  //   fs:list-audio-files
+  // Events: render:progress · render:audio-folder-changed
   render: {
     checkFfmpeg: () => invoke('render:checkFfmpeg'),
-    listAudioFiles: (folderPath) => invoke('render:listAudioFiles', { folderPath }),
-    getPreferredEncoder: () => invoke('render:getPreferredEncoder'),
-    startBatch: (args) => invoke('render:startBatch', args || {}),
-    cancelJob: (jobId) => invoke('render:cancelJob', { jobId }),
+    listAudioFiles: (folderPath) => invoke('fs:list-audio-files', { folderPath }),
+    getPreferredEncoder: () => invoke('render:get-preferred-encoder'),
+    diagnoseEncoder: (refresh) => invoke('render:diagnose-encoder', { refresh: !!refresh }),
+    watchAudioFolder: (folderPath) => invoke('render:watch-audio-folder', { folderPath }),
+    unwatchAudioFolder: () => invoke('render:unwatch-audio-folder'),
+    onAudioFolderChanged: (handler) => subscribe('render:audio-folder-changed', handler),
+    startBatch: (args) => invoke('render:start-batch-cover', args || {}),
+    cancelJob: (jobId) => invoke('render:cancel-job', { jobId }),
     onProgress: (handler) => subscribe('render:progress', handler),
   },
 })

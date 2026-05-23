@@ -1,314 +1,89 @@
+'use strict'
 /**
- * render.cjs — FFmpeg orchestration สำหรับโมดูล "เรนเดอร์คลิป"
+ * render IPC handlers — port จาก INKIDEA (ff47bb5 + 70529c7)
  *
- * รับเสียง 1 ไฟล์ + ภาพปก 1 ไฟล์ → render เป็น .mp4 (1280×720, libx264, AAC) แบบ batch ได้
+ * - NVENC ทำงานได้บนการ์ดจอ NVIDIA ทุกรุ่น (preset default + -cq + -b:v 0)
+ * - VideoToolbox สำหรับ macOS
+ * - Probe-based encoder filtering (render:diagnose-encoder) — เฉพาะ encoder ที่ probe ผ่าน
+ * - Smart cover matching (range > overlap > single number)
+ * - HW encoder fallback → Software ถ้าเรียกใช้งานจริงล้มเหลว
+ * - Intro clip concat (2-stage render)
+ * - Audio folder watcher (push event ตอน folder มี content เปลี่ยน)
  *
- * Channels:
- *   render:startBatch       { jobId, coverFolder/coverPath, useMultipleCovers, audioFolder,
- *                             selectedAudioFiles, outputFolder, titlePrefix, encodeOption,
- *                             crfValue, resolutionLabel, overwriteMode }  →  RenderSummary
- *   render:cancelJob        { jobId }  →  void
- *   render:checkFfmpeg      ()  →  { ok, version?, path?, error? }
- *   render:listAudioFiles   { folderPath }  →  string[]
- *   render:getPreferredEncoder ()  →  encoderLabel  (suggest จาก GPU ที่มี)
- *
- * Events ส่งกลับ renderer:
- *   render:progress   ProgressPayload   (per-chunk parse จาก ffmpeg stderr)
- *
- * FFmpeg binary: ใช้ ffmpeg-static — path resolve ผ่าน helpers/ffmpeg.cjs (handle asar unpack)
+ * Channel names ใช้แบบ INKIDEA — preload + shim สร้าง alias ให้ตรงกับ window.inkstudio.render
  */
 
-const { ipcMain } = require('electron')
-const path = require('node:path')
-const fs = require('node:fs')
-const fsp = require('node:fs/promises')
-const { spawn } = require('node:child_process')
-const os = require('node:os')
-const { resolveFfmpegPath } = require('../helpers/ffmpeg.cjs')
+const { ipcMain, app, dialog, BrowserWindow } = require('electron')
+const path = require('path')
+const fs = require('fs')
+const fsp = require('fs/promises')
+const os = require('os')
+const { spawn } = require('child_process')
+const { getFfmpegPath } = require('../helpers/nativePaths.cjs')
+const { safeAttempt, safeAttemptAsync } = require('../helpers/safeAttempt.cjs')
 const { createLogger } = require('../helpers/logger.cjs')
 const {
-  formatRes,
-  encoderArgs,
-  parseDuration,
-  parseTime,
+  activeRenderJobs,
+  buildCoverIndex,
+  buildVideoEncodeArgs,
+  detectPreferredEncoder,
+  diagnoseEncoder,
+  extractNumberOrRanges,
   formatTime,
-  basename,
-  nameWithoutExt,
-} = require('./renderHelpers.cjs')
+  listFilesByExt,
+  matchCoverForAudio,
+  parseTime,
+  readPresets,
+  runFfmpegWithTimeParsing,
+  stopAllFfmpegAndRenderJobs,
+  writePresets,
+} = require('./render/renderHelpers.cjs')
+const { register: registerAudioFolderWatch } = require('./render/audioFolderWatcher.cjs')
 
 const log = createLogger('render')
-
-const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg'])
-const IMAGE_EXTENSIONS_RE = /\.(png|jpe?g|webp)$/iu
-
-/** active jobs — keyed by jobId */
-const activeJobs = new Map()
-
-function broadcastProgress(getWin, payload) {
-  try {
-    const win = typeof getWin === 'function' ? getWin() : null
-    if (!win || win.isDestroyed()) return
-    win.webContents.send('render:progress', payload)
-  } catch (err) {
-    log.warn('broadcast failed', { error: err && err.message })
-  }
-}
-
-
-/** หาไฟล์ปกที่ match ชื่อกับไฟล์เสียง — สำหรับ multi-cover mode */
-async function findMatchingCover(coverFolder, audioBase) {
-  if (!coverFolder || !audioBase) return null
-  const entries = await fsp.readdir(coverFolder).catch(() => [])
-  const target = nameWithoutExt(audioBase).toLowerCase()
-  for (const name of entries) {
-    if (!IMAGE_EXTENSIONS_RE.test(name)) continue
-    if (nameWithoutExt(name).toLowerCase() === target) {
-      return path.join(coverFolder, name)
-    }
-  }
-  return null
-}
-
-/**
- * Render 1 file: cover + audio → mp4
- *   อ่าน audio duration ก่อนเริ่ม → progress %  = currentTime / totalDuration
- */
-function renderOne({
-  jobId,
-  coverPath,
-  audioPath,
-  outputPath,
-  res,
-  encoderLabel,
-  crfValue,
-  getWin,
-  onCancel,
-}) {
-  return new Promise((resolve, reject) => {
-    const ffmpegPath = resolveFfmpegPath()
-    const args = [
-      '-y',
-      '-loop', '1',
-      '-i', coverPath,
-      '-i', audioPath,
-      '-shortest',
-      '-vf', `scale=${res.w}:${res.h}:force_original_aspect_ratio=increase,crop=${res.w}:${res.h}`,
-      ...encoderArgs(encoderLabel, crfValue),
-      '-c:a', 'aac',
-      '-b:a', '192k',
-      '-ar', '44100',
-      '-r', '1',
-      '-movflags', '+faststart',
-      outputPath,
-    ]
-
-    log.info('ffmpeg spawn', { jobId, file: basename(outputPath) })
-
-    const proc = spawn(ffmpegPath, args, { windowsHide: true })
-    let stderr = ''
-    let duration = null
-    const fileBase = basename(outputPath)
-
-    onCancel(() => {
-      try { proc.kill('SIGKILL') } catch { /* noop */ }
-    })
-
-    proc.stderr.on('data', (chunk) => {
-      const text = chunk.toString('utf-8')
-      stderr += text
-      if (duration == null) duration = parseDuration(stderr)
-      // parse time line by line (per fragment)
-      const lines = text.split(/\r?\n/u)
-      for (const line of lines) {
-        const t = parseTime(line)
-        if (t == null || duration == null || duration <= 0) continue
-        const ratio = Math.max(0, Math.min(1, t / duration))
-        broadcastProgress(getWin, {
-          jobId,
-          phase: 'encode',
-          progress: ratio,
-          fileName: fileBase,
-          currentTimeText: formatTime(t),
-          durationText: formatTime(duration),
-        })
-      }
-    })
-
-    proc.on('error', (err) => {
-      log.error('ffmpeg error', { jobId, file: fileBase, error: err && err.message })
-      reject(err)
-    })
-
-    proc.on('close', (code, signal) => {
-      if (signal === 'SIGKILL') {
-        return reject(new Error('cancelled'))
-      }
-      if (code !== 0) {
-        const tail = stderr.split(/\r?\n/u).slice(-6).join('\n')
-        return reject(new Error(`ffmpeg exited ${code}\n${tail}`))
-      }
-      resolve()
-    })
-  })
-}
-
-async function startBatchRender(args, getWin) {
-  const {
-    jobId = `job-${Date.now()}`,
-    coverPath = '',
-    coverFolder = '',
-    useMultipleCovers = false,
-    audioFolder = '',
-    selectedAudioFiles = [],
-    outputFolder = '',
-    titlePrefix = '',
-    encodeOption = 'Software (H.264)',
-    crfValue = 26,
-    resolutionLabel = '720p',
-    overwriteMode = 'skip',
-  } = args || {}
-
-  if (!audioFolder) throw new Error('audioFolder is required')
-  if (!outputFolder) throw new Error('outputFolder is required')
-  if (!useMultipleCovers && !coverPath) throw new Error('coverPath is required (single-cover mode)')
-  if (useMultipleCovers && !coverFolder) throw new Error('coverFolder is required (multi-cover mode)')
-  if (!Array.isArray(selectedAudioFiles) || selectedAudioFiles.length === 0) {
-    throw new Error('selectedAudioFiles is empty')
-  }
-
-  await fsp.mkdir(outputFolder, { recursive: true }).catch(() => undefined)
-
-  const res = formatRes(resolutionLabel)
-  const totalFiles = selectedAudioFiles.length
-  const t0 = Date.now()
-  let successCount = 0
-  let skippedCount = 0
-  const missingCovers = []
-  const cancelHooks = new Set()
-  const job = {
-    jobId,
-    cancelled: false,
-    requestCancel() {
-      this.cancelled = true
-      for (const h of cancelHooks) {
-        try { h() } catch { /* noop */ }
-      }
-    },
-  }
-  activeJobs.set(jobId, job)
-
-  try {
-    for (let i = 0; i < selectedAudioFiles.length; i += 1) {
-      if (job.cancelled) break
-      const audioName = selectedAudioFiles[i]
-      const audioPath = path.join(audioFolder, audioName)
-      const baseName = nameWithoutExt(audioName)
-      const outName = `${titlePrefix || ''}${baseName}.mp4`
-      const outputPath = path.join(outputFolder, outName)
-
-      let cover = coverPath
-      if (useMultipleCovers) {
-        cover = await findMatchingCover(coverFolder, audioName)
-        if (!cover) {
-          missingCovers.push(audioName)
-          broadcastProgress(() => (typeof getWin === 'function' ? getWin() : null), {
-            jobId,
-            phase: 'skip',
-            progress: i / totalFiles,
-            fileName: audioName,
-            message: `ข้าม: ไม่พบปกที่ตรงกับ ${audioName}`,
-          })
-          continue
-        }
-      }
-
-      if (overwriteMode === 'skip' && fs.existsSync(outputPath)) {
-        skippedCount += 1
-        broadcastProgress(() => (typeof getWin === 'function' ? getWin() : null), {
-          jobId,
-          phase: 'skip',
-          progress: (i + 1) / totalFiles,
-          fileName: outName,
-          message: `ข้าม (มีอยู่แล้ว): ${outName}`,
-        })
-        continue
-      }
-
-      broadcastProgress(() => (typeof getWin === 'function' ? getWin() : null), {
-        jobId,
-        phase: 'start',
-        progress: i / totalFiles,
-        fileName: outName,
-        message: `กำลังเข้ารหัส [${i + 1}/${totalFiles}] ${outName}`,
-      })
-
-      let perFileHook = null
-      try {
-        await renderOne({
-          jobId,
-          coverPath: cover,
-          audioPath,
-          outputPath,
-          res,
-          encoderLabel: encodeOption,
-          crfValue,
-          getWin,
-          onCancel: (h) => {
-            perFileHook = h
-            cancelHooks.add(h)
-          },
-        })
-        successCount += 1
-      } catch (err) {
-        if (job.cancelled) break
-        log.warn('renderOne failed', { jobId, file: outName, error: err && err.message })
-        broadcastProgress(() => (typeof getWin === 'function' ? getWin() : null), {
-          jobId,
-          phase: 'error',
-          progress: (i + 1) / totalFiles,
-          fileName: outName,
-          message: `ผิดพลาด: ${(err && err.message) || 'unknown'}`,
-        })
-      } finally {
-        if (perFileHook) cancelHooks.delete(perFileHook)
-      }
-    }
-  } finally {
-    activeJobs.delete(jobId)
-  }
-
-  const elapsedSeconds = (Date.now() - t0) / 1000
-  const summary = {
-    successCount,
-    totalFiles,
-    elapsedSeconds,
-    skippedCount,
-    missingCovers,
-    encoder: encodeOption,
-    resolutionLabel,
-  }
-  broadcastProgress(() => (typeof getWin === 'function' ? getWin() : null), {
-    jobId,
-    phase: 'done',
-    progress: 1,
-    summary,
-  })
-  return summary
-}
-
-function detectPreferredEncoder() {
-  // ตรวจคร่าว ๆ จาก GPU env — production อาจ probe ผ่าน `ffmpeg -encoders` แต่หนัก
-  const gpu = (os.cpus()[0] && os.cpus()[0].model) || ''
-  if (/nvidia/iu.test(gpu)) return 'NVENC (H.264)'
-  return 'Software (H.264)'
-}
+const ffmpegPath = getFfmpegPath()
 
 function registerRenderIpc(getMainWindow) {
+  registerAudioFolderWatch()
+
+  ipcMain.handle('preset:list', async () => readPresets())
+
+  ipcMain.handle('preset:save', async (_event, { name, data } = {}) => {
+    if (!name || typeof name !== 'string') throw new Error('กรุณาระบุชื่อพรีเซ็ต')
+    const presets = await readPresets()
+    presets[name] = data
+    await writePresets(presets)
+    return presets
+  })
+
+  ipcMain.handle('preset:delete', async (_event, { name } = {}) => {
+    if (!name || typeof name !== 'string') throw new Error('กรุณาระบุชื่อพรีเซ็ต')
+    const presets = await readPresets()
+    delete presets[name]
+    await writePresets(presets)
+    return presets
+  })
+
+  ipcMain.handle('render:get-preferred-encoder', async () => detectPreferredEncoder())
+
+  /** วินิจฉัย encoder แบบเต็ม — probe NVENC จริง + เหตุผลถ้าใช้ GPU ไม่ได้
+   *  ส่ง { refresh:true } เพื่อ probe ใหม่ (เช่น หลังผู้ใช้อัปเดตไดรเวอร์) */
+  ipcMain.handle('render:diagnose-encoder', async (_event, payload) => {
+    const refresh = !!(payload && payload.refresh)
+    return diagnoseEncoder(refresh)
+  })
+
+  ipcMain.handle('fs:list-audio-files', async (_event, { folderPath } = {}) => {
+    if (!folderPath || typeof folderPath !== 'string') throw new Error('กรุณาระบุเส้นทางโฟลเดอร์')
+    if (!fs.existsSync(folderPath)) return []
+    return listFilesByExt(folderPath, ['.wav', '.mp3', '.m4a'])
+  })
+
+  /** ตรวจ ffmpeg availability — ใช้สำหรับ status check ใน UI */
   ipcMain.handle('render:checkFfmpeg', async () => {
     try {
-      const ffmpegPath = resolveFfmpegPath()
-      if (!fs.existsSync(ffmpegPath)) {
-        return { ok: false, error: `ffmpeg not found at ${ffmpegPath}` }
+      if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
+        return { ok: false, error: `ffmpeg not found at ${ffmpegPath || '(unknown)'}` }
       }
       return new Promise((resolve) => {
         const proc = spawn(ffmpegPath, ['-version'], { windowsHide: true })
@@ -326,38 +101,292 @@ function registerRenderIpc(getMainWindow) {
     }
   })
 
-  ipcMain.handle('render:listAudioFiles', async (_e, payload) => {
-    const folder = String(payload?.folderPath || '')
-    if (!folder || !fs.existsSync(folder)) return []
+  ipcMain.handle('render:cancel-job', async (_event, { jobId } = {}) => {
+    if (!jobId || !activeRenderJobs.has(jobId)) return { ok: false, cancelled: false }
+    const job = activeRenderJobs.get(jobId)
+    for (const child of job.children) {
+      safeAttempt('kill render child (cancel)', () => child.kill('SIGKILL'))
+    }
+    activeRenderJobs.delete(jobId)
+    return { ok: true, cancelled: true }
+  })
+
+  ipcMain.handle('render:start-batch-cover', async (event, payload = {}) => {
+    const {
+      jobId, imagePath, audioFolder, outputFolder, coverFolder,
+      useMultipleCovers, titlePrefix = '', encodeOption, crfValue,
+      resolutionLabel, overwriteMode = 'ask', selectedAudioFiles,
+      doneFolder: doneFolderPayload,
+      introPath: introPathPayload = '',
+      introClipPath: introClipPathPayload = '', // legacy alias
+    } = payload
+
+    if (!jobId || typeof jobId !== 'string') throw new Error('กรุณาระบุรหัสงาน')
+    if (!audioFolder || !outputFolder) throw new Error('กรุณาเลือกโฟลเดอร์เสียงและโฟลเดอร์ปลายทาง')
+    if (!useMultipleCovers && !imagePath) throw new Error('กรุณาเลือกภาพปก')
+    if (useMultipleCovers && !coverFolder) throw new Error('กรุณาเลือกโฟลเดอร์ภาพปก')
+
+    /** intro: optional — รับทั้ง introPath และ introClipPath เพื่อ backward compat */
+    const introCandidate = introPathPayload || introClipPathPayload
+    const introPath = typeof introCandidate === 'string' && introCandidate.trim() ? introCandidate.trim() : ''
+    const useIntroValid = introPath && fs.existsSync(introPath)
+    if (introPath && !useIntroValid) {
+      event.sender.send('render:progress', {
+        jobId, phase: 'intro', progress: 0,
+        message: `เตือน: ไม่พบไฟล์ intro "${introPath}" — จะเรนเดอร์โดยไม่แทรก intro`,
+      })
+    }
+
+    const resolutionMap = {
+      '144p': '256:144',
+      '240p': '426:240',
+      '360p': '640:360',
+      '480p': '854:480',
+      '720p': '1280:720',
+      '1080p': '1920:1080',
+    }
+    const selectedResolution = resolutionMap[resolutionLabel] ?? resolutionMap['240p']
+    const VALID_ENCODERS = new Set([
+      'NVENC (H.264)', 'NVIDIA NVENC (H.264)', 'NVENC (H.265)',
+      'VideoToolbox (H.264)', 'VideoToolbox (H.265)', 'Software (H.264)',
+    ])
+    const finalEncodeOption = VALID_ENCODERS.has(encodeOption) ? encodeOption : await detectPreferredEncoder()
+    /** อาจถูกดาวน์เกรดเป็น Software กลางคัน ถ้า HW encoder เปิดไม่ได้บนเครื่องนั้น */
+    let videoEncodeOption = finalEncodeOption
+    const effectiveCrf = Number(crfValue)
+
+    if (!ffmpegPath || !fs.existsSync(ffmpegPath)) throw new Error('ไม่พบ FFmpeg ในโปรแกรม')
+    if (!fs.existsSync(audioFolder)) throw new Error('ไม่พบโฟลเดอร์เสียง')
+    if (!fs.existsSync(outputFolder)) await fsp.mkdir(outputFolder, { recursive: true })
+    if (!useMultipleCovers && !fs.existsSync(imagePath)) throw new Error(`ไม่พบภาพปก: ${imagePath}`)
+    if (useMultipleCovers && !fs.existsSync(coverFolder)) throw new Error(`ไม่พบโฟลเดอร์ภาพปก: ${coverFolder}`)
+
+    let audioFiles = listFilesByExt(audioFolder, ['.wav', '.mp3', '.m4a'])
+    if (Array.isArray(selectedAudioFiles)) {
+      const selectedSet = new Set(
+        selectedAudioFiles.filter((n) => typeof n === 'string').map((n) => n.trim()).filter(Boolean)
+      )
+      if (selectedSet.size === 0) throw new Error('กรุณาเลือกไฟล์เสียงอย่างน้อย 1 ไฟล์')
+      audioFiles = audioFiles.filter((n) => selectedSet.has(n))
+    }
+    if (audioFiles.length === 0) throw new Error('ไม่พบไฟล์เสียง .wav / .mp3 / .m4a ที่ตรงกับรายการที่เลือก')
+
+    stopAllFfmpegAndRenderJobs()
+
+    /** doneFolder: ถ้า user ส่ง path มา ใช้เลย — ไม่งั้น default `<audioFolder>/processed` */
+    const doneFolder = typeof doneFolderPayload === 'string' && doneFolderPayload
+      ? doneFolderPayload
+      : path.join(audioFolder, 'processed')
+    await fsp.mkdir(doneFolder, { recursive: true })
+
+    const coverIndex = useMultipleCovers ? buildCoverIndex(coverFolder) : null
+    const missingCovers = []
+    let successCount = 0
+    let skippedCount = 0
+    const fileTimes = []
+    const errorLogPath = path.join(app.getPath('userData'), 'rendering_errors.log')
+    const startedAt = Date.now()
+    let overwriteAll = overwriteMode === 'replace_all' || overwriteMode === 'overwrite'
+      ? true
+      : overwriteMode === 'skip_all' || overwriteMode === 'skip'
+        ? false
+        : null
+    const childSet = new Set()
+    activeRenderJobs.set(jobId, { children: childSet })
+    /** ไฟล์ temp ที่ต้อง clean ไม่ว่าจะ success/fail/cancel — เก็บไว้ cleanup ที่ outer finally */
+    const tempFilesToCleanup = new Set()
+
     try {
-      const entries = await fsp.readdir(folder, { withFileTypes: true })
-      return entries
-        .filter((e) => e.isFile() && AUDIO_EXTENSIONS.has(path.extname(e.name).toLowerCase()))
-        .map((e) => e.name)
-        .sort()
-    } catch (err) {
-      log.warn('listAudioFiles failed', { folder, error: err && err.message })
-      return []
+      for (let index = 0; index < audioFiles.length; index++) {
+        if (!activeRenderJobs.has(jobId)) throw new Error('ยกเลิกการเรนเดอร์แล้ว')
+        const audioFile = audioFiles[index]
+        const fileStartTime = Date.now()
+        const audioPath = path.join(audioFolder, audioFile)
+        const audioBase = path.parse(audioFile).name
+
+        let outputFilename = `${audioBase}.mp4`
+        const cleanPrefix = String(titlePrefix).replace(/^\s+/, '')
+        if (cleanPrefix) {
+          const numbers = extractNumberOrRanges(audioBase)
+          const numberPart = numbers.length > 0 ? numbers.sort((a, b) => b.length - a.length)[0] : audioBase
+          outputFilename = `${cleanPrefix}${numberPart}.mp4`
+        }
+        const outputFile = path.join(outputFolder, outputFilename)
+
+        let coverImage = imagePath
+        if (useMultipleCovers) {
+          coverImage = matchCoverForAudio(audioFile, coverFolder, coverIndex)
+          if (!coverImage || !fs.existsSync(coverImage)) {
+            missingCovers.push(audioFile)
+            await safeAttemptAsync('move audio → done (skip)', () => fsp.rename(audioPath, path.join(doneFolder, audioFile)))
+            event.sender.send('render:progress', {
+              jobId, phase: 'จับคู่ภาพปก', progress: index / audioFiles.length,
+              message: `ข้าม ${audioFile} เนื่องจากไม่พบภาพปกที่ตรงกัน`,
+            })
+            continue
+          }
+        }
+
+        if (fs.existsSync(outputFile)) {
+          if (overwriteAll === null) {
+            const mainWin = getMainWindow ? getMainWindow() : BrowserWindow.getFocusedWindow()
+            if (!mainWin) {
+              /** no window to prompt — default skip */
+              overwriteAll = false
+            } else {
+              const response = await dialog.showMessageBox(mainWin, {
+                type: 'warning',
+                buttons: ['แทนที่ไฟล์นี้และไฟล์ถัดไปทั้งหมด', 'ข้ามไฟล์นี้และไฟล์ที่ซ้ำถัดไปทั้งหมด', 'ยกเลิก'],
+                defaultId: 0, cancelId: 2,
+                title: 'พบไฟล์ปลายทางที่มีอยู่แล้ว',
+                message: `ไฟล์ ${path.basename(outputFile)} มีอยู่แล้ว`,
+                detail: 'กรุณาเลือกวิธีจัดการไฟล์ที่ซ้ำกัน',
+              })
+              if (response.response === 0) overwriteAll = true
+              if (response.response === 1 || response.response === 2) overwriteAll = false
+            }
+          }
+          if (overwriteAll === false) {
+            skippedCount += 1
+            await safeAttemptAsync('move audio → done (skip)', () => fsp.rename(audioPath, path.join(doneFolder, audioFile)))
+            continue
+          }
+        }
+
+        const baseFilePercent = (index / audioFiles.length) * 100
+        event.sender.send('render:progress', {
+          jobId, phase: 'เรนเดอร์', progress: index / audioFiles.length,
+          message: `กำลังเรนเดอร์ไฟล์ที่ ${index + 1} จาก ${audioFiles.length}: ${audioFile}`,
+          fileName: audioFile, overallPercent: baseFilePercent,
+        })
+
+        let duration = 0
+        let currentTime = 0
+        /** ถ้าใช้ intro = render chapter ไป temp ก่อน แล้วค่อย concat
+         *  ถ้าไม่ใช้ intro = render ตรงเข้า outputFile */
+        const chapterOutFile = useIntroValid
+          ? path.join(outputFolder, `.${path.parse(outputFilename).name}.chapter.mp4`)
+          : outputFile
+        if (useIntroValid) tempFilesToCleanup.add(chapterOutFile)
+
+        const chapterFfmpegHooks = {
+          registerChild: (child) => childSet.add(child),
+          unregisterChild: (child) => childSet.delete(child),
+          onTimeLine: (text) => {
+            const durationMatch = text.match(/Duration:\s(\d{2}:\d{2}:\d{2}\.\d{2})/)
+            if (durationMatch) duration = parseTime(durationMatch[1])
+            const timeMatch = text.match(/time=(\d{2}:\d{2}:\d{2}\.\d{2})/)
+            if (timeMatch) {
+              currentTime = parseTime(timeMatch[1])
+              if (duration > 0) {
+                const fileProgressPercent = Math.min(100, (currentTime / duration) * 100)
+                const overallProgress = baseFilePercent + fileProgressPercent / audioFiles.length
+                const elapsedFileTime = (Date.now() - fileStartTime) / 1000
+                const speed = currentTime > 0 && elapsedFileTime > 0 ? currentTime / elapsedFileTime : 0
+                const remainingFileTime = speed > 0 ? (duration - currentTime) / speed : 0
+                const avgTimePerFile =
+                  fileTimes.length > 0 ? fileTimes.reduce((a, b) => a + b, 0) / fileTimes.length : elapsedFileTime
+                const etaSeconds = remainingFileTime + avgTimePerFile * (audioFiles.length - (index + 1))
+                event.sender.send('render:progress', {
+                  jobId, phase: 'เรนเดอร์', progress: Math.min(1, overallProgress / 100),
+                  message: `กำลังเรนเดอร์ ${audioFile}`, fileName: audioFile,
+                  fileProgressPercent, overallPercent: overallProgress,
+                  currentTimeText: formatTime(currentTime), durationText: formatTime(duration),
+                  etaText: formatTime(etaSeconds),
+                })
+              }
+            }
+          },
+        }
+
+        /** เรนเดอร์ 1 ตอน — แยกเป็นฟังก์ชันเพื่อใช้ retry ตอน fallback เป็น CPU */
+        const renderChapter = (encodeArgs) =>
+          runFfmpegWithTimeParsing(ffmpegPath, [
+            '-y', '-loop', '1', '-i', coverImage, '-i', audioPath,
+            '-vf', `scale=${selectedResolution}`, '-r', '1',
+            ...encodeArgs,
+            '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-pix_fmt', 'yuv420p', '-shortest', chapterOutFile,
+          ], chapterFfmpegHooks)
+
+        try {
+          await renderChapter(buildVideoEncodeArgs(videoEncodeOption, effectiveCrf))
+        } catch (err) {
+          /** HW encoder (NVENC/VideoToolbox) เปิดไม่ได้บนเครื่องนี้ — ถอยไปใช้ CPU
+           *  ซึ่งใช้ได้ทุกเครื่องทุก OS. ถ้าเป็น Software อยู่แล้ว หรืองานถูกยกเลิก
+           *  = error จริง ให้โยนต่อ */
+          if (videoEncodeOption === 'Software (H.264)' || !activeRenderJobs.has(jobId)) throw err
+          videoEncodeOption = 'Software (H.264)'
+          await safeAttemptAsync('log hw-encoder fallback', () =>
+            fsp.appendFile(
+              errorLogPath,
+              `คำเตือน: ใช้ฮาร์ดแวร์เรนเดอร์ไม่ได้ — เปลี่ยนไปใช้ CPU: ${err instanceof Error ? err.message : String(err)}${os.EOL}`,
+              'utf8'
+            )
+          )
+          event.sender.send('render:progress', {
+            jobId, phase: 'เรนเดอร์', progress: index / audioFiles.length,
+            message: 'การ์ดจอเรนเดอร์ไม่ได้ — รอบนี้ใช้ CPU แทน (ลองอัปเดตไดรเวอร์การ์ดจอ NVIDIA แล้วเรนเดอร์ใหม่)',
+            fileName: audioFile, overallPercent: baseFilePercent,
+          })
+          duration = 0
+          currentTime = 0
+          await renderChapter(buildVideoEncodeArgs(videoEncodeOption, effectiveCrf))
+        }
+
+        /** ขั้นที่ 2: concat intro + chapter → outputFile (เฉพาะกรณีใช้ intro) */
+        if (useIntroValid) {
+          event.sender.send('render:progress', {
+            jobId, phase: 'intro', progress: Math.min(1, (baseFilePercent + 100 / audioFiles.length * 0.9) / 100),
+            message: `รวม intro กับ ${audioFile}`, fileName: audioFile,
+          })
+          const [wRes, hRes] = String(selectedResolution).split(':')
+          await runFfmpegWithTimeParsing(ffmpegPath, [
+            '-y', '-i', introPath, '-i', chapterOutFile,
+            '-filter_complex',
+            `[0:v]scale=${wRes}:${hRes}:force_original_aspect_ratio=decrease,pad=${wRes}:${hRes}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1[v0];` +
+            `[1:v]scale=${wRes}:${hRes}:force_original_aspect_ratio=decrease,pad=${wRes}:${hRes}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1[v1];` +
+            `[v0][0:a][v1][1:a]concat=n=2:v=1:a=1[v][a]`,
+            '-map', '[v]', '-map', '[a]',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(Number.isFinite(effectiveCrf) ? effectiveCrf : 30),
+            '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '44100',
+            '-movflags', '+faststart', outputFile,
+          ], {
+            registerChild: (child) => childSet.add(child),
+            unregisterChild: (child) => childSet.delete(child),
+          })
+          await safeAttemptAsync('unlink chapter temp (success)', () => fsp.unlink(chapterOutFile))
+          tempFilesToCleanup.delete(chapterOutFile)
+        }
+
+        successCount += 1
+        fileTimes.push((Date.now() - fileStartTime) / 1000)
+        try { await fsp.rename(audioPath, path.join(doneFolder, audioFile)) } catch (e) {
+          await fsp.appendFile(errorLogPath, `คำเตือน: ไม่สามารถย้าย ${audioFile}: ${String(e)}${os.EOL}`, 'utf8')
+        }
+      }
+
+      const elapsedSeconds = (Date.now() - startedAt) / 1000
+      const summary = {
+        successCount, totalFiles: audioFiles.length, elapsedSeconds,
+        skippedCount, missingCovers, encoder: videoEncodeOption, resolutionLabel,
+      }
+      event.sender.send('render:progress', {
+        jobId, phase: 'เสร็จสมบูรณ์', progress: 1, message: 'การเรนเดอร์เสร็จสมบูรณ์แล้ว', summary,
+      })
+      return summary
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      await fsp.appendFile(errorLogPath, `ข้อผิดพลาด: ${message}${os.EOL}`, 'utf8')
+      throw e
+    } finally {
+      activeRenderJobs.delete(jobId)
+      for (const tempPath of tempFilesToCleanup) {
+        await safeAttemptAsync('unlink chapter temp (finally)', () => fsp.unlink(tempPath))
+      }
     }
   })
 
-  ipcMain.handle('render:getPreferredEncoder', async () => detectPreferredEncoder())
-
-  ipcMain.handle('render:startBatch', async (_e, payload) => {
-    try {
-      return await startBatchRender(payload, getMainWindow)
-    } catch (err) {
-      log.error('startBatch failed', { error: err && err.message })
-      throw err
-    }
-  })
-
-  ipcMain.handle('render:cancelJob', (_e, payload) => {
-    const jobId = String(payload?.jobId || '')
-    const job = activeJobs.get(jobId)
-    if (job) job.requestCancel()
-    return { ok: true }
-  })
+  log.info('render IPC registered')
 }
 
 module.exports = { registerRenderIpc }

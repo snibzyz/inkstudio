@@ -1,5 +1,5 @@
-import { hubSettingsInputClass } from '@shared/ui'
-import { Move3D, RotateCcw, RotateCw, Trash2 } from 'lucide-react'
+import { Codicon, hubSettingsInputClass } from '@shared/ui'
+import { Move3D, RotateCw } from 'lucide-react'
 import type * as fabric from 'fabric'
 import type { InkLayerKind } from '../coverEditorTypes'
 import { useCoverEditorCtx } from '../CoverEditorContext'
@@ -35,11 +35,11 @@ export function TransformSection({ open, onToggle }: { open: boolean; onToggle: 
         isNonBg ? (
           <>
             <IconBtnSm title="รีเซ็ตตำแหน่ง/มุม/ขนาด" disabled={busy || !selectedLayerId} onClick={resetSelectedLayerTransform}>
-              <RotateCcw className="h-3.5 w-3.5" />
+              <Codicon name="discard" size={14} />
             </IconBtnSm>
             <IconBtnSm title="ลบเลเยอร์" disabled={busy || !selectedLayerId} onClick={deleteSelectedLayer}
               className="hover:bg-vscode-error/15 hover:text-vscode-error">
-              <Trash2 className="h-3.5 w-3.5" />
+              <Codicon name="trash" size={14} />
             </IconBtnSm>
           </>
         ) : null

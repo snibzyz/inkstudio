@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Cropper, { type Area } from 'react-easy-crop'
-import { IdeDialog } from '@shared/ui'
+import { AppButton, IdeDialog, cn } from '@shared/ui'
 import {
   COVER_RATIO_PRESETS,
   DEFAULT_BACKGROUND_RATIO_PRESET,
@@ -178,22 +178,12 @@ export function CoverCropDialog({ open, imageDataUrl, kind, onClose, onConfirm }
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 text-[12px] text-vscode-muted">{error}</div>
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              className="h-8 rounded-sm border border-vscode-border px-3 text-[12px] text-vscode-fg-dim hover:bg-vscode-list-hover disabled:opacity-50"
-            >
+            <AppButton tone="zinc" onPress={onClose} disabled={busy}>
               ยกเลิก
-            </button>
-            <button
-              type="button"
-              onClick={() => void confirm()}
-              disabled={busy}
-              className="h-8 rounded-sm bg-vscode-button px-3 text-[12px] text-white hover:bg-vscode-button-hover disabled:opacity-50"
-            >
+            </AppButton>
+            <AppButton tone="primary" onPress={() => void confirm()} disabled={busy}>
               ใช้ปกนี้
-            </button>
+            </AppButton>
           </div>
         </div>
       }
@@ -292,52 +282,34 @@ export function CoverCropDialog({ open, imageDataUrl, kind, onClose, onConfirm }
             />
           </label>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => quickRotate(-90)}
-              className="h-8 rounded-sm border border-vscode-border px-2 text-[12px] text-vscode-fg-dim hover:bg-vscode-list-hover hover:text-vscode-fg"
-            >
+            <AppButton tone="zinc" variant="flat" onPress={() => quickRotate(-90)}>
               หมุนซ้าย
-            </button>
-            <button
-              type="button"
-              onClick={() => quickRotate(90)}
-              className="h-8 rounded-sm border border-vscode-border px-2 text-[12px] text-vscode-fg-dim hover:bg-vscode-list-hover hover:text-vscode-fg"
-            >
+            </AppButton>
+            <AppButton tone="zinc" variant="flat" onPress={() => quickRotate(90)}>
               หมุนขวา
-            </button>
+            </AppButton>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setFlipX((value) => !value)}
-              className={`h-8 rounded-sm border px-2 text-[12px] ${
-                flipX
-                  ? 'border-vscode-focus bg-vscode-list-active text-vscode-fg-bright'
-                  : 'border-vscode-border text-vscode-fg-dim hover:bg-vscode-list-hover hover:text-vscode-fg'
-              }`}
+            <AppButton
+              tone={flipX ? 'primary' : 'zinc'}
+              variant="flat"
+              onPress={() => setFlipX((value) => !value)}
+              className={cn(flipX && 'border-vscode-focus bg-vscode-list-active text-vscode-fg-bright')}
             >
               กลับซ้ายขวา
-            </button>
-            <button
-              type="button"
-              onClick={() => setFlipY((value) => !value)}
-              className={`h-8 rounded-sm border px-2 text-[12px] ${
-                flipY
-                  ? 'border-vscode-focus bg-vscode-list-active text-vscode-fg-bright'
-                  : 'border-vscode-border text-vscode-fg-dim hover:bg-vscode-list-hover hover:text-vscode-fg'
-              }`}
+            </AppButton>
+            <AppButton
+              tone={flipY ? 'primary' : 'zinc'}
+              variant="flat"
+              onPress={() => setFlipY((value) => !value)}
+              className={cn(flipY && 'border-vscode-focus bg-vscode-list-active text-vscode-fg-bright')}
             >
               กลับบนล่าง
-            </button>
+            </AppButton>
           </div>
-          <button
-            type="button"
-            onClick={reset}
-            className="h-8 w-full rounded-sm border border-vscode-border px-2 text-[12px] text-vscode-fg-dim hover:bg-vscode-list-hover hover:text-vscode-fg"
-          >
+          <AppButton tone="zinc" variant="flat" onPress={reset} className="w-full">
             รีเซ็ต
-          </button>
+          </AppButton>
         </aside>
       </div>
     </IdeDialog>

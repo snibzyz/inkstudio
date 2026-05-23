@@ -43,18 +43,39 @@ export type RenderBatchArgs = {
   coverFolder: string
   useMultipleCovers: boolean
   titlePrefix: string
-  /** ไฟล์อินโทร (วิดีโอ) ที่จะ prepend หน้าทุกตอน — ว่าง = ไม่ใช้ */
+  /** ไฟล์อินโทร (วิดีโอ) ที่จะ prepend หน้าทุกตอน — ว่าง = ไม่ใช้ (INKIDEA shape) */
+  introPath?: string
+  /** legacy field — เก็บไว้รองรับโค้ดเก่า, ใช้ introPath เป็นหลัก */
   introClipPath?: string
   encodeOption: string
   crfValue: number
   /** '144p' | '240p' | '360p' | '480p' | '720p' | '1080p' */
   resolutionLabel: string
-  /** FPS ของ video stream — INKSTUDIO ใช้ 1 fps (ภาพนิ่ง) */
-  fps: number
-  /** x264 preset — INKSTUDIO ใช้ 'ultrafast' (เร็วสุด ทรัพยากรน้อยสุด) */
-  preset: string
-  overwriteMode: 'ask' | 'skip' | 'overwrite'
+  /** FPS ของ video stream — optional (default 1 fps) */
+  fps?: number
+  /** x264 preset — optional (default 'ultrafast') */
+  preset?: string
+  overwriteMode: 'ask' | 'skip' | 'overwrite' | 'replace_all' | 'skip_all'
   selectedAudioFiles: string[]
+}
+
+export type ProbeResult = { ok: boolean; error: string }
+export type EncoderDiag = {
+  preferred?: string
+  platform?: string
+  gpu: { name: string; driver: string } | null
+  nvenc: ProbeResult
+  encoders?: {
+    nvencH264: ProbeResult
+    nvencHevc: ProbeResult
+    vtH264: ProbeResult
+    vtHevc: ProbeResult
+    software: ProbeResult
+  }
+}
+
+export type AudioFolderChangedPayload = {
+  folderPath: string
 }
 
 export type PresetMap = Record<string, unknown>
@@ -124,6 +145,11 @@ export type LegacyElectronIpc = {
   offRenderProgress: () => void
   listAudioFiles: (arg: { folderPath: string }) => Promise<string[]>
   getPreferredEncoder: () => Promise<string>
+  diagnoseEncoder: (arg?: { refresh?: boolean }) => Promise<EncoderDiag>
+  watchAudioFolder: (arg: { folderPath: string }) => Promise<{ watching: boolean }>
+  unwatchAudioFolder: () => Promise<{ watching: boolean }>
+  onAudioFolderChanged: (cb: (payload: AudioFolderChangedPayload) => void) => void
+  offAudioFolderChanged: () => void
   listPresets: () => Promise<PresetMap>
   savePreset: (arg: { name: string; data: unknown }) => Promise<PresetMap>
   deletePreset: (arg: { name: string }) => Promise<PresetMap>
@@ -133,6 +159,7 @@ declare global {
   interface Window {
     electron?: {
       ipc: LegacyElectronIpc
+      platform?: NodeJS.Platform
     }
     inkstudio?: {
       platform: NodeJS.Platform
@@ -212,6 +239,10 @@ declare global {
         checkFfmpeg: () => Promise<{ ok: boolean; version?: string; path?: string; error?: string }>
         listAudioFiles: (folderPath: string) => Promise<string[]>
         getPreferredEncoder: () => Promise<string>
+        diagnoseEncoder?: (refresh?: boolean) => Promise<EncoderDiag>
+        watchAudioFolder?: (folderPath: string) => Promise<{ watching: boolean }>
+        unwatchAudioFolder?: () => Promise<{ watching: boolean }>
+        onAudioFolderChanged?: (handler: (payload: AudioFolderChangedPayload) => void) => () => void
         startBatch: (args: {
           jobId: string
           coverPath?: string
@@ -221,13 +252,17 @@ declare global {
           selectedAudioFiles: string[]
           outputFolder: string
           titlePrefix: string
+          /** ไฟล์อินโทรที่จะ prepend หน้าทุกตอน — INKIDEA shape */
+          introPath?: string
+          /** legacy alias */
           introClipPath?: string
+          doneFolder?: string
           encodeOption: string
           crfValue: number
           resolutionLabel: '144p' | '240p' | '360p' | '480p' | '720p' | '1080p'
-          fps: number
-          preset: string
-          overwriteMode: 'skip' | 'overwrite'
+          fps?: number
+          preset?: string
+          overwriteMode: 'skip' | 'overwrite' | 'ask' | 'replace_all' | 'skip_all'
         }) => Promise<RenderSummary>
         cancelJob: (jobId: string) => Promise<{ ok: boolean }>
         onProgress: (handler: (payload: RenderProgressPayload) => void) => () => void
