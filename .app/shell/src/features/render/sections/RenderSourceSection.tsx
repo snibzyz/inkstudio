@@ -19,6 +19,7 @@ import {
 import { useRender } from '../useRender'
 import type { useRenderJob } from '../useRenderJob'
 import { useHubWorkspace } from '@/state/useHubWorkspace'
+import { classifyIntro } from '../renderConstants'
 
 type JobBridge = ReturnType<typeof useRenderJob>
 
@@ -59,6 +60,14 @@ export function RenderSourceSection({ job }: { job: JobBridge }) {
 
   const coverMode: CoverMode = useMultipleCovers ? 'perChapter' : 'single'
   const introFileName = introPath ? introPath.split(/[/\\]/).pop() : ''
+  const introKind = introPath ? classifyIntro(introPath) : 'unknown'
+  const introIsAudio = introKind === 'audio'
+  /** อธิบายพฤติกรรมตามชนิดไฟล์ — ตรงกับ pipeline ใน render.cjs */
+  const introBehaviorHint = introIsAudio
+    ? 'ไฟล์เสียง: รวมเสียงเปิด + เสียงตอนเป็นคลิปเดียว ใช้ปกของตอนนั้นตลอดทั้งคลิป'
+    : introKind === 'video'
+      ? 'วิดีโอ: เล่นคลิปนี้ก่อน แล้วต่อด้วยเนื้อหาตอน (ปก + เสียงตอน) ตามปกติ'
+      : ''
 
   return (
     <div className="space-y-5">
@@ -143,23 +152,29 @@ export function RenderSourceSection({ job }: { job: JobBridge }) {
         />
       </HubSettingsSection>
 
-      {/* ─── 3. วิดีโอเปิด (intro) ─────────────────────────────── */}
+      {/* ─── 3. ไฟล์เปิด (intro) ──────────────────────────────── */}
       <HubSettingsSection
         icon={<Codicon name="play-circle" />}
-        title="วิดีโอเปิด"
+        title="ไฟล์เปิด (intro)"
         step={3}
-        description="คลิปสั้น ๆ ที่แทรกหน้าทุกตอน เช่น โลโก้ช่อง (ไม่บังคับ — เว้นว่างได้)"
+        description="วิดีโอหรือเสียงสั้น ๆ ที่แทรกหน้าทุกตอน เช่น โลโก้ช่อง / จิงเกิล (ไม่บังคับ — เว้นว่างได้)"
       >
         {introPath ? (
-          /** มีไฟล์แล้ว: แสดงชื่อไฟล์ + toggle ใช้งาน + เปลี่ยน + ล้าง */
+          /** มีไฟล์แล้ว: แสดงชื่อไฟล์ + ชนิด + toggle ใช้งาน + เปลี่ยน + ล้าง */
           <div className="space-y-2">
             <div className="flex items-center gap-2 rounded-sm border border-vscode-border bg-vscode-input/40 px-2.5 py-1.5">
-              <Codicon name="device-camera-video" className="shrink-0 text-vscode-focus" />
+              <Codicon
+                name={introIsAudio ? 'music' : 'device-camera-video'}
+                className="shrink-0 text-vscode-focus"
+              />
               <span
                 className="min-w-0 flex-1 truncate text-[12px] text-vscode-fg"
                 title={introPath}
               >
                 {introFileName}
+              </span>
+              <span className="shrink-0 rounded-sm border border-vscode-border bg-vscode-input/60 px-1.5 py-0.5 text-[10px] font-bold uppercase text-vscode-muted">
+                {introIsAudio ? 'เสียง' : introKind === 'video' ? 'วิดีโอ' : 'ไม่รองรับ'}
               </span>
               <button
                 type="button"
@@ -175,6 +190,15 @@ export function RenderSourceSection({ job }: { job: JobBridge }) {
                 {useIntro ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
               </button>
             </div>
+            {introBehaviorHint ? (
+              <p className="px-0.5 text-[11px] leading-relaxed text-vscode-muted">
+                {introBehaviorHint}
+              </p>
+            ) : (
+              <p className="px-0.5 text-[11px] leading-relaxed text-amber-400">
+                ชนิดไฟล์นี้ไม่รองรับเป็น intro — รองรับวิดีโอ (mp4, mov, mkv, webm, avi) และเสียง (wav, mp3, m4a, aac, flac, ogg, opus)
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               <HubSettingsButton
                 tone="ghost"
@@ -201,11 +225,11 @@ export function RenderSourceSection({ job }: { job: JobBridge }) {
           <HubSettingsButton
             tone="secondary"
             icon={<Codicon name="add" />}
-            title="เลือกไฟล์วิดีโอเปิด (MP4, MOV, MKV หรือ WEBM)"
+            title="เลือกไฟล์เปิด — วิดีโอ (mp4, mov, mkv, webm, avi) หรือเสียง (wav, mp3, m4a, aac, flac, ogg, opus)"
             disabled={busy}
             onClick={() => void job.chooseIntro()}
           >
-            เพิ่มวิดีโอเปิด
+            เพิ่มไฟล์เปิด
           </HubSettingsButton>
         )}
       </HubSettingsSection>

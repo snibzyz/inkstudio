@@ -18,6 +18,9 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useHubWorkspace } from '@/state/useHubWorkspace'
 import { useRender, buildBatchPresetFromState } from './useRender'
 import type { PresetMap, ProgressPayload } from './renderTypes'
+import { INTRO_VIDEO_EXTENSIONS, INTRO_AUDIO_EXTENSIONS } from './renderConstants'
+import { formatRenderSummary } from './renderSummaryText'
+import { reconcileAudioSelection } from './renderAudioSelection'
 
 function newId() {
   const anyCrypto = typeof crypto !== 'undefined' ? (crypto as unknown as { randomUUID?: () => string }) : undefined
@@ -128,17 +131,7 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
       try {
         const files = await electron.listAudioFiles({ folderPath: target })
         store.setAudioFiles(files)
-        store.setSelectedAudioFiles((prev) => {
-          const next = new Set<string>()
-          if (prev.size === 0) {
-            for (const f of files) next.add(f)
-            return next
-          }
-          const allowed = new Set(files)
-          for (const f of prev) if (allowed.has(f)) next.add(f)
-          if (next.size === 0) for (const f of files) next.add(f)
-          return next
-        })
+        store.setSelectedAudioFiles((prev) => reconcileAudioSelection(prev, files))
       } catch {
         store.setAudioFiles([])
         store.setSelectedAudioFiles(new Set())
@@ -146,6 +139,16 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
     },
     [electron]
   )
+
+  /** กลับเข้าโหมดคลิป = โหลดรายการตอน (ไฟล์เสียง) ใหม่ กันรายการค้างเก่าเมื่อมีไฟล์เสียง
+   *  ใหม่จากเครื่องมือเสียง — ผู้ใช้ไม่ต้องกดรีเฟรชเอง. INKSTUDIO unmount โมดูลตอนสลับ
+   *  (App.tsx) → effect นี้รันตอน mount = เทียบเท่า becameActive ของ INKIDEA */
+  useEffect(() => {
+    const s = useRender.getState()
+    if (s.audioFolder && !s.busy) void refreshAudioPreview(s.audioFolder)
+    // mount-only — refreshAudioPreview เสถียร (อิง electron); ไม่ใส่ deps อื่นเพื่อกันรีรันซ้ำ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /** รับ push event ตอนโฟลเดอร์เสียงเปลี่ยน → โหลดรายการตอนใหม่
    *  รีเฟรชเฉพาะเมื่อ event ตรงโฟลเดอร์ที่กำลังดู และไม่ได้กำลังเรนเดอร์อยู่ */
@@ -176,7 +179,11 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
     if (!electron) return
     const selected = await electron.selectFiles({
       properties: ['openFile'],
-      filters: [{ name: 'ไฟล์วิดีโอ', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi'] }],
+      filters: [
+        { name: 'วิดีโอหรือเสียง', extensions: [...INTRO_VIDEO_EXTENSIONS, ...INTRO_AUDIO_EXTENSIONS] },
+        { name: 'วิดีโอ', extensions: [...INTRO_VIDEO_EXTENSIONS] },
+        { name: 'เสียง', extensions: [...INTRO_AUDIO_EXTENSIONS] },
+      ],
     })
     if (selected[0]) {
       const s = useRender.getState()
@@ -303,12 +310,11 @@ export function useRenderJob({ programActive }: { programActive: boolean }) {
       const project = useHubWorkspace.getState().activeProject
       const projectName = project?.title || project?.slug || 'โปรเจกต์'
       const outputBasename = (s.outputFolder.split(/[\\/]/).pop() || 'output') + '/'
-      let msg = `เสร็จ: ${summary.successCount}/${summary.totalFiles} ไฟล์ · ${formatSeconds(summary.elapsedSeconds)} · บันทึกใน ${projectName} ที่ ${outputBasename}`
-      if (summary.missingCovers.length > 0) msg += `\nข้ามปก: ${summary.missingCovers.length} ไฟล์`
-      if (summary.skippedCount > 0) msg += `\nข้ามซ้ำ: ${summary.skippedCount} ไฟล์`
+      /** cancelled → "ยกเลิก: …" + สถานะ "ยกเลิกการเรนเดอร์แล้ว" (ดู renderSummaryText) */
+      const { message: msg, status } = formatRenderSummary(summary, { projectName, outputBasename, formatSeconds })
       const after = useRender.getState()
       after.setSummaryText(msg)
-      after.setStatus('เรนเดอร์เสร็จสมบูรณ์')
+      after.setStatus(status)
       after.setProgress(1)
       await refreshAudioPreview()
     } catch (e) {

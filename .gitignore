@@ -9,3 +9,6 @@ output/
 
 .env
 .env.local
+
+# test scratch data (รูปปกทดสอบ) — เก็บเฉพาะ verify-*.cjs scripts
+test/*.png

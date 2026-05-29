@@ -49,5 +49,21 @@ export const BUG_REPORT_MAILTO =
     'กรุณาระบุ:\n- โปรแกรมที่ใช้ (เช่น เรนเดอร์วิดีโอ / ตัวช่วยปก)\n- ขั้นตอนที่ทำก่อนเกิดปัญหา\n- ข้อความ error (ถ้ามี)\n\n'
   )
 
-/** นามสกุลไฟล์ที่ยอมรับเป็น intro clip */
+/** นามสกุลไฟล์ที่ยอมรับเป็น intro — แยกชนิดเพื่อเลือก pipeline ตอนเรนเดอร์
+ *  วิดีโอ → เอามาต่อหน้าสุด (concat ระดับวิดีโอ)
+ *  เสียง  → merge เสียง intro + เสียงตอน แล้วใช้ปกของตอนนั้นตลอดคลิป (concat ระดับเสียง) */
 export const INTRO_VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'avi'] as const
+export const INTRO_AUDIO_EXTENSIONS = ['wav', 'mp3', 'm4a', 'aac', 'flac', 'ogg', 'opus'] as const
+/** รวมทั้งสองชนิด — ใช้กับ file picker */
+export const INTRO_EXTENSIONS = [...INTRO_VIDEO_EXTENSIONS, ...INTRO_AUDIO_EXTENSIONS] as const
+
+export type IntroKind = 'video' | 'audio' | 'unknown'
+
+/** แยกชนิดไฟล์ intro จากนามสกุล (case-insensitive) — ต้อง sync กับ INTRO_*_EXTENSIONS
+ *  ฝั่ง electron (render.cjs) มี logic เดียวกันแบบ inline เพราะคนละ module system */
+export function classifyIntro(filePath: string): IntroKind {
+  const ext = (filePath.match(/\.([a-z0-9]+)$/i)?.[1] ?? '').toLowerCase()
+  if ((INTRO_VIDEO_EXTENSIONS as readonly string[]).includes(ext)) return 'video'
+  if ((INTRO_AUDIO_EXTENSIONS as readonly string[]).includes(ext)) return 'audio'
+  return 'unknown'
+}

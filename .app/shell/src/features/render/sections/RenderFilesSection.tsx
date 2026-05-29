@@ -5,7 +5,7 @@
  *   - Toolbar: ทั้งหมด / ไม่เลือก / สลับ / รีเฟรช
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   cn,
   Codicon,
@@ -14,6 +14,9 @@ import {
   HubSettingsEmptyState,
   HubSettingsFilePickerHeader,
   HubSettingsInput,
+  RangeSelectToolbar,
+  toRangeItemsFromFilenames,
+  toggleBatchSelection,
 } from '@shared/ui'
 import { useRender } from '../useRender'
 import type { useRenderJob } from '../useRenderJob'
@@ -39,8 +42,21 @@ export function RenderFilesSection({ job }: { job: JobBridge }) {
     return audioFiles.filter((f) => f.toLowerCase().includes(q))
   }, [audioFiles, audioSearch])
 
+  const rangeItems = useMemo(() => toRangeItemsFromFilenames(audioFiles), [audioFiles])
+
+  const [batchMode, setBatchMode] = useState(false)
+  const [batchSize, setBatchSize] = useState(10)
+
   const useVirtual = audioFiles.length > VIRTUAL_THRESHOLD
   const selectedCount = selectedAudioFiles.size
+
+  const handleRowToggle = (file: string) => {
+    if (batchMode) {
+      setSelectedAudioFiles(toggleBatchSelection(file, batchSize, rangeItems, selectedAudioFiles))
+    } else {
+      toggleAudioFile(file)
+    }
+  }
 
   return (
     <div className="space-y-2.5">
@@ -51,6 +67,16 @@ export function RenderFilesSection({ job }: { job: JobBridge }) {
         onSelectAll={() => selectAll()}
         onSelectNone={() => clearSelection()}
         hint={useVirtual ? `รายการเยอะ — ใช้ค้นหาเพื่อกรอง` : undefined}
+      />
+
+      <RangeSelectToolbar
+        items={rangeItems}
+        onReplaceSelection={(next) => setSelectedAudioFiles(next)}
+        batchMode={batchMode}
+        onBatchModeChange={setBatchMode}
+        batchSize={batchSize}
+        onBatchSizeChange={setBatchSize}
+        disabled={busy || audioFiles.length === 0}
       />
 
       <div className="flex gap-2">
@@ -125,7 +151,7 @@ export function RenderFilesSection({ job }: { job: JobBridge }) {
                   type="checkbox"
                   checked={checked}
                   disabled={busy}
-                  onChange={() => toggleAudioFile(file)}
+                  onChange={() => handleRowToggle(file)}
                   className="h-3.5 w-3.5 accent-vscode-success"
                 />
                 <span className="min-w-0 flex-1 truncate" title={file}>

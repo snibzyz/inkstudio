@@ -13,10 +13,13 @@ import {
   DEFAULT_RESOLUTION,
   ENCODE_OPTIONS,
   FIXED_AUDIO_INFO,
+  INTRO_AUDIO_EXTENSIONS,
+  INTRO_EXTENSIONS,
   INTRO_VIDEO_EXTENSIONS,
   LOG_BUFFER_LIMIT,
   RESOLUTION_OPTIONS,
   STORAGE_KEY,
+  classifyIntro,
 } from '../renderConstants'
 
 describe('renderConstants — defaults', () => {
@@ -62,5 +65,33 @@ describe('renderConstants — misc', () => {
   it('INTRO_VIDEO_EXTENSIONS includes mp4 + mov', () => {
     expect(INTRO_VIDEO_EXTENSIONS).toContain('mp4')
     expect(INTRO_VIDEO_EXTENSIONS).toContain('mov')
+  })
+  it('INTRO_AUDIO_EXTENSIONS includes wav + mp3', () => {
+    expect(INTRO_AUDIO_EXTENSIONS).toContain('wav')
+    expect(INTRO_AUDIO_EXTENSIONS).toContain('mp3')
+  })
+  it('INTRO_EXTENSIONS รวมทั้งวิดีโอและเสียง', () => {
+    expect(INTRO_EXTENSIONS).toContain('mp4')
+    expect(INTRO_EXTENSIONS).toContain('wav')
+    expect(INTRO_EXTENSIONS.length).toBe(INTRO_VIDEO_EXTENSIONS.length + INTRO_AUDIO_EXTENSIONS.length)
+  })
+})
+
+describe('renderConstants — classifyIntro', () => {
+  it('แยกชนิดวิดีโอจากนามสกุล', () => {
+    expect(classifyIntro('Z:/clips/logo.mp4')).toBe('video')
+    expect(classifyIntro('intro.MOV')).toBe('video')
+    expect(classifyIntro('a.webm')).toBe('video')
+  })
+  it('แยกชนิดเสียงจากนามสกุล (case-insensitive)', () => {
+    expect(classifyIntro('jingle.mp3')).toBe('audio')
+    expect(classifyIntro('Z:/a b/Intro.WAV')).toBe('audio')
+    expect(classifyIntro('voice.m4a')).toBe('audio')
+  })
+  it('นามสกุลที่ไม่รองรับ → unknown', () => {
+    expect(classifyIntro('notes.txt')).toBe('unknown')
+    expect(classifyIntro('image.png')).toBe('unknown')
+    expect(classifyIntro('noext')).toBe('unknown')
+    expect(classifyIntro('')).toBe('unknown')
   })
 })

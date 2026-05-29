@@ -27,8 +27,9 @@ const trackedFfmpegChildren = new Set()
 /** Graceful-quit window — ffmpeg has up to this many ms to write its trailer
  *  and exit cleanly after we send it `q` on stdin. Past this, we SIGKILL so
  *  the user never gets stuck if ffmpeg ignores the request (rare, but happens
- *  with a stuck input). 4 s is enough to finalize a multi-GB mp4 mux. */
-const GRACEFUL_QUIT_TIMEOUT_MS = 4000
+ *  with a stuck input). 10 s lets even multi-GB muxes finalize on a slow
+ *  disk before we force-kill. */
+const GRACEFUL_QUIT_TIMEOUT_MS = 10000
 
 function isFfmpegCommand(command) {
   if (!ffmpegPath || typeof command !== 'string') return false
@@ -73,8 +74,10 @@ function stopFfmpegChild(child, { force = false, reason = '' } = {}) {
   child.once('close', () => { finalized = true })
   try {
     if (child.stdin && !child.stdin.destroyed && child.stdin.writable) {
+      /** เขียนแค่ `q\n` — อย่าเรียก `end()` เพราะการปิด stdin เร็วเกินไปทำให้ ffmpeg
+       *  ออกก่อนอ่าน `q` ที่ค้างใน queue → muxer ไม่ถูก finalize (ไม่มี moov atom →
+       *  .mp4 เล่นไม่ได้). ffmpeg จะปิด stdin เองตอนออก */
       child.stdin.write('q\n')
-      try { child.stdin.end() } catch { /* ignore */ }
     } else {
       // No stdin pipe — fall straight back to SIGKILL.
       safeAttempt(`kill ffmpeg (no-stdin · ${reason})`, () => child.kill('SIGKILL'))

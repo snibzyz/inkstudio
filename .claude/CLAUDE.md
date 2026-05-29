@@ -123,7 +123,7 @@ features/
 | `settings` | get, patch, setKey, reset, onChange | wired |
 | `log` | info, warn, error, debug, getLogPath | wired |
 | `shell` | showItemInFolder, beep | wired |
-| `render` | checkFfmpeg, listAudioFiles, getPreferredEncoder, startBatch, cancelJob, onProgress | preload wired · main process IPC handlers **TODO** (ดู `.app/docs/architecture.md` § 9 Phase B) |
+| `render` | checkFfmpeg, listAudioFiles, getPreferredEncoder, startBatch, cancelJob, onProgress | **wired** — main process `render:start-batch-cover` + `render:cancel-job` (graceful `q`-quit), encoder detect/diagnose, smart cover matching, audio folder watcher, intro (วิดีโอ/เสียง) |
 | `cover` | (script save/load ใช้ localStorage — ไม่ต้องการ IPC) | n/a |
 | (legacy compat) | `window.electron.ipc.*` — INKIDEA-style surface | shimmed via `state/electronIpcShim.ts` → maps to `window.inkstudio.*`; presets ใช้ localStorage |
 
@@ -146,9 +146,13 @@ GitHub repo: `snibzyz/inkstudio` (ยังไม่สร้าง · ตั้
 ```bash
 pnpm dev                  # Vite (5573) + Electron พร้อมกัน
 pnpm typecheck            # ตรวจ TS — ปัจจุบันผ่าน
-pnpm test                 # vitest run — 106/106 ผ่าน
-                          #   coverEditorUtils (35) · useRender (18) · electronIpcShim (22)
-                          #   useHubWorkspace (14) · renderConstants (9) · useApp/useStudio (8)
+pnpm test                 # vitest run — 151/151 ผ่าน
+                          #   coverEditorUtils (35) · electronIpcShim (27) · useRender (23)
+                          #   renderConstants (16) · rangeSelectLogic (16) · useHubWorkspace (14)
+                          #   renderSummaryText (6) · renderAudioSelection (6) · useApp/useStudio (8)
+                          # ffmpeg integration (ไม่ใช่ vitest — รันมือ):
+                          #   node test/verify-intro.cjs   → 4 เคส intro เล่นได้จริง
+                          #   node test/verify-cancel.cjs  → graceful cancel ได้ partial mp4 เล่นได้
 pnpm build                # vite build → dist/ — ~1700 modules, ~640 KB JS, ~77 KB CSS
 
 pnpm package:win          # NSIS + Portable → release/INKSTUDIO-Setup-0.1.0.exe (~106 MB)
@@ -186,6 +190,28 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
 - ห้าม emoji ใน UI source — ใช้ codicon เท่านั้น
 
 ## 12. การเปลี่ยนแปลงล่าสุด
+
+### 2026-05-30
+
+- **Magic select (เลือกตอน/ช่วง/ทีละ N)** — fork จาก INKIDEA ที่ตกหล่นตอน re-fork render
+  - เพิ่ม `shared-ui/utils/rangeSelectLogic.ts` + `shared-ui/components/RangeSelectToolbar.tsx` + barrel exports
+  - wire เข้า `RenderFilesSection` — "ช่วงตอน 1-50, 100-200" + "เลือกทีละ N" + คลิกซ้ำ = ยกเลิกกลุ่ม
+- **Intro รองรับทั้งวิดีโอและเสียง** (เดิมวิดีโออย่างเดียว)
+  - `renderConstants.ts`: เพิ่ม `INTRO_AUDIO_EXTENSIONS`, `INTRO_EXTENSIONS`, `classifyIntro()`
+  - **วิดีโอ** → concat ระดับวิดีโอ (2-stage) · **เสียง** → merge เสียง intro+ตอน single-pass ใช้ปกตอนตลอดคลิป
+  - **วิดีโอเงียบ (ไม่มี audio track)** → เติม `anullsrc` อัตโนมัติก่อน concat (probe ผ่าน `ffmpeg -i`, ไม่มี ffprobe)
+  - `+aformat` harmonize sample-rate กัน glitch ตอน concat
+  - UI: หัวข้อ "ไฟล์เปิด (intro)" + badge เสียง/วิดีโอ + hint อธิบายพฤติกรรม + picker รับ 2 ชนิด
+- **Cancellation state (port INKIDEA)** — กด "หยุด" = graceful `q`-quit (ไฟล์ปัจจุบัน finalize เล่นได้)
+  - `render:cancel-job` ใช้ `stopFfmpegChild` แทน SIGKILL · catch คืน summary `cancelled:true` แทน throw
+  - `renderHelpers`: graceful timeout 4s→10s + เลิกเรียก `stdin.end()` (กัน muxer ไม่ finalize → ไฟล์พัง)
+  - `RenderSummary.cancelled` + `renderSummaryText.ts` (pure) → ข้อความ "ยกเลิก: …/บันทึกบางส่วน"
+- **Auto-refresh รายการเสียงตอนกลับเข้าโหมดคลิป** (polish จาก INKIDEA) — App.tsx unmount โมดูล
+  ตอนสลับ → เพิ่ม mount-effect ใน `useRenderJob` (เทียบเท่า becameActive ของ INKIDEA) +
+  แยก `reconcileAudioSelection()` (pure) คงการเลือกไฟล์ที่ยังมีอยู่
+- **Tests — 151 passing** (+rangeSelectLogic 16, renderConstants +5 intro, renderSummaryText 6, renderAudioSelection 6)
+  - + ffmpeg integration (รันมือ): `test/verify-intro.cjs` (4 เคส) · `test/verify-cancel.cjs` (partial เล่นได้)
+- **หมายเหตุ**: render IPC handlers ใช้งานได้จริงแล้ว (note "TODO" เดิมล้าสมัย — re-fork 2026-05-15 wire ไว้)
 
 ### 2026-05-15
 

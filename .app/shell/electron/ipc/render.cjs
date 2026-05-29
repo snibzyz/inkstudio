@@ -18,9 +18,9 @@ const path = require('path')
 const fs = require('fs')
 const fsp = require('fs/promises')
 const os = require('os')
-const { spawn } = require('child_process')
+const { spawn, spawnSync } = require('child_process')
 const { getFfmpegPath } = require('../helpers/nativePaths.cjs')
-const { safeAttempt, safeAttemptAsync } = require('../helpers/safeAttempt.cjs')
+const { safeAttemptAsync } = require('../helpers/safeAttempt.cjs')
 const { createLogger } = require('../helpers/logger.cjs')
 const {
   activeRenderJobs,
@@ -36,12 +36,24 @@ const {
   readPresets,
   runFfmpegWithTimeParsing,
   stopAllFfmpegAndRenderJobs,
+  stopFfmpegChild,
   writePresets,
 } = require('./render/renderHelpers.cjs')
 const { register: registerAudioFolderWatch } = require('./render/audioFolderWatcher.cjs')
 
 const log = createLogger('render')
 const ffmpegPath = getFfmpegPath()
+
+/** ตรวจว่าไฟล์มีแทร็กเสียงหรือไม่ — INKSTUDIO ไม่มี ffprobe จึง parse จาก ffmpeg -i (เขียนข้อมูล stream ไป stderr)
+ *  ใช้กับ intro วิดีโอ: ถ้าไม่มีเสียง ต้องเติม anullsrc ก่อน concat (ที่อ้าง [0:a]) */
+function ffmpegInputHasAudio(ffmpegBin, file) {
+  try {
+    const r = spawnSync(ffmpegBin, ['-i', file], { encoding: 'utf8', windowsHide: true })
+    return /Stream #[^\n]*Audio:/.test((r.stderr || '') + (r.stdout || ''))
+  } catch {
+    return false
+  }
+}
 
 function registerRenderIpc(getMainWindow) {
   registerAudioFolderWatch()
@@ -104,8 +116,12 @@ function registerRenderIpc(getMainWindow) {
   ipcMain.handle('render:cancel-job', async (_event, { jobId } = {}) => {
     if (!jobId || !activeRenderJobs.has(jobId)) return { ok: false, cancelled: false }
     const job = activeRenderJobs.get(jobId)
+    /** Graceful cancel — เขียน `q\n` ให้ ffmpeg แต่ละตัว finalize muxer (ไฟล์ .mp4
+     *  บางส่วนยังเล่นได้) แล้วออก; stopFfmpegChild fallback เป็น SIGKILL อัตโนมัติ
+     *  ถ้าไม่ยอมออกใน GRACEFUL_QUIT_TIMEOUT_MS. ลบ jobId หลัง loop เพื่อให้ iteration
+     *  ถัดไปเห็น has(jobId)=false (rejection จาก child ที่ถูกหยุดไหลกลับเข้า catch) */
     for (const child of job.children) {
-      safeAttempt('kill render child (cancel)', () => child.kill('SIGKILL'))
+      stopFfmpegChild(child, { reason: 'user-cancel' })
     }
     activeRenderJobs.delete(jobId)
     return { ok: true, cancelled: true }
@@ -126,14 +142,26 @@ function registerRenderIpc(getMainWindow) {
     if (!useMultipleCovers && !imagePath) throw new Error('กรุณาเลือกภาพปก')
     if (useMultipleCovers && !coverFolder) throw new Error('กรุณาเลือกโฟลเดอร์ภาพปก')
 
-    /** intro: optional — รับทั้ง introPath และ introClipPath เพื่อ backward compat */
+    /** intro: optional — รับทั้ง introPath และ introClipPath เพื่อ backward compat
+     *  รองรับ 2 ชนิด (ต้อง sync กับ INTRO_*_EXTENSIONS ฝั่ง renderer/renderConstants.ts):
+     *    video → เอามาต่อหน้าสุด (concat ระดับวิดีโอ, 2-stage)
+     *    audio → merge เสียง intro + เสียงตอน ใช้ปกตอนตลอดคลิป (single-pass) */
+    const INTRO_VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi'])
+    const INTRO_AUDIO_EXTS = new Set(['.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus'])
     const introCandidate = introPathPayload || introClipPathPayload
     const introPath = typeof introCandidate === 'string' && introCandidate.trim() ? introCandidate.trim() : ''
-    const useIntroValid = introPath && fs.existsSync(introPath)
+    const introExt = introPath ? path.extname(introPath).toLowerCase() : ''
+    const introKind = INTRO_VIDEO_EXTS.has(introExt) ? 'video' : INTRO_AUDIO_EXTS.has(introExt) ? 'audio' : 'unknown'
+    const useIntroValid = Boolean(introPath) && fs.existsSync(introPath) && introKind !== 'unknown'
+    /** เฉพาะวิดีโอที่ต้อง render chapter เป็น temp ก่อนแล้วค่อย concat — เสียง render รวบเดียว */
+    const needsConcatStage = useIntroValid && introKind === 'video'
     if (introPath && !useIntroValid) {
+      const reason = !fs.existsSync(introPath)
+        ? `ไม่พบไฟล์ intro "${introPath}"`
+        : `ชนิดไฟล์ intro ไม่รองรับ "${introExt}"`
       event.sender.send('render:progress', {
         jobId, phase: 'intro', progress: 0,
-        message: `เตือน: ไม่พบไฟล์ intro "${introPath}" — จะเรนเดอร์โดยไม่แทรก intro`,
+        message: `เตือน: ${reason} — จะเรนเดอร์โดยไม่แทรก intro`,
       })
     }
 
@@ -197,6 +225,31 @@ function registerRenderIpc(getMainWindow) {
     const tempFilesToCleanup = new Set()
 
     try {
+      /** intro วิดีโอที่ไม่มีแทร็กเสียง → concat ที่อ้าง [0:a] จะล้มเหลว
+       *  เติมเสียงเงียบ (anullsrc) ให้ intro หนึ่งครั้งก่อนเข้าลูป แล้วใช้ไฟล์นั้น concat
+       *  (intro ที่มีเสียงอยู่แล้ว = ใช้ตรง ๆ ไม่แตะ เพื่อคงเสียง intro เดิม) */
+      let concatIntroPath = introPath
+      if (needsConcatStage && !ffmpegInputHasAudio(ffmpegPath, introPath)) {
+        const silentIntro = path.join(outputFolder, '.intro.silentaudio.mp4')
+        tempFilesToCleanup.add(silentIntro)
+        event.sender.send('render:progress', {
+          jobId, phase: 'intro', progress: 0,
+          message: 'วิดีโอเปิดไม่มีเสียง — เพิ่มแทร็กเสียงเงียบให้อัตโนมัติ',
+        })
+        const normResult = await runFfmpegWithTimeParsing(ffmpegPath, [
+          '-y', '-i', introPath,
+          '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+          '-map', '0:v', '-map', '1:a',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-shortest', silentIntro,
+        ], {
+          registerChild: (child) => childSet.add(child),
+          unregisterChild: (child) => childSet.delete(child),
+        })
+        if (normResult && normResult.cancelled) throw new Error('ยกเลิกการเรนเดอร์แล้ว')
+        concatIntroPath = silentIntro
+      }
+
       for (let index = 0; index < audioFiles.length; index++) {
         if (!activeRenderJobs.has(jobId)) throw new Error('ยกเลิกการเรนเดอร์แล้ว')
         const audioFile = audioFiles[index]
@@ -262,12 +315,12 @@ function registerRenderIpc(getMainWindow) {
 
         let duration = 0
         let currentTime = 0
-        /** ถ้าใช้ intro = render chapter ไป temp ก่อน แล้วค่อย concat
-         *  ถ้าไม่ใช้ intro = render ตรงเข้า outputFile */
-        const chapterOutFile = useIntroValid
+        /** วิดีโอ intro = render chapter ไป temp ก่อน แล้วค่อย concat กับวิดีโอ
+         *  เสียง intro / ไม่มี intro = render ตรงเข้า outputFile (เสียงถูก merge ใน pass เดียว) */
+        const chapterOutFile = needsConcatStage
           ? path.join(outputFolder, `.${path.parse(outputFilename).name}.chapter.mp4`)
           : outputFile
-        if (useIntroValid) tempFilesToCleanup.add(chapterOutFile)
+        if (needsConcatStage) tempFilesToCleanup.add(chapterOutFile)
 
         const chapterFfmpegHooks = {
           registerChild: (child) => childSet.add(child),
@@ -299,17 +352,34 @@ function registerRenderIpc(getMainWindow) {
           },
         }
 
-        /** เรนเดอร์ 1 ตอน — แยกเป็นฟังก์ชันเพื่อใช้ retry ตอน fallback เป็น CPU */
-        const renderChapter = (encodeArgs) =>
-          runFfmpegWithTimeParsing(ffmpegPath, [
+        /** เรนเดอร์ 1 ตอน — แยกเป็นฟังก์ชันเพื่อใช้ retry ตอน fallback เป็น CPU
+         *  - intro เสียง: loop ปก + concat(เสียง intro, เสียงตอน) ใน pass เดียว (ปกตลอดคลิป)
+         *  - อื่น ๆ: loop ปก + เสียงตอน ตามปกติ */
+        const renderChapter = (encodeArgs) => {
+          if (useIntroValid && introKind === 'audio') {
+            return runFfmpegWithTimeParsing(ffmpegPath, [
+              '-y', '-loop', '1', '-i', coverImage, '-i', introPath, '-i', audioPath,
+              '-filter_complex',
+              `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[ia];` +
+              `[2:a]aformat=sample_rates=44100:channel_layouts=stereo[ca];` +
+              `[ia][ca]concat=n=2:v=0:a=1[aout]`,
+              '-map', '0:v', '-map', '[aout]',
+              '-vf', `scale=${selectedResolution}`, '-r', '1',
+              ...encodeArgs,
+              '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-pix_fmt', 'yuv420p', '-shortest', chapterOutFile,
+            ], chapterFfmpegHooks)
+          }
+          return runFfmpegWithTimeParsing(ffmpegPath, [
             '-y', '-loop', '1', '-i', coverImage, '-i', audioPath,
             '-vf', `scale=${selectedResolution}`, '-r', '1',
             ...encodeArgs,
             '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-pix_fmt', 'yuv420p', '-shortest', chapterOutFile,
           ], chapterFfmpegHooks)
+        }
 
+        let chapterResult
         try {
-          await renderChapter(buildVideoEncodeArgs(videoEncodeOption, effectiveCrf))
+          chapterResult = await renderChapter(buildVideoEncodeArgs(videoEncodeOption, effectiveCrf))
         } catch (err) {
           /** HW encoder (NVENC/VideoToolbox) เปิดไม่ได้บนเครื่องนี้ — ถอยไปใช้ CPU
            *  ซึ่งใช้ได้ทุกเครื่องทุก OS. ถ้าเป็น Software อยู่แล้ว หรืองานถูกยกเลิก
@@ -330,22 +400,32 @@ function registerRenderIpc(getMainWindow) {
           })
           duration = 0
           currentTime = 0
-          await renderChapter(buildVideoEncodeArgs(videoEncodeOption, effectiveCrf))
+          chapterResult = await renderChapter(buildVideoEncodeArgs(videoEncodeOption, effectiveCrf))
         }
 
-        /** ขั้นที่ 2: concat intro + chapter → outputFile (เฉพาะกรณีใช้ intro) */
-        if (useIntroValid) {
+        /** Graceful cancel — user กด "หยุด" ตอน chapter นี้กำลัง encode: helper
+         *  resolve {cancelled:true} (ไฟล์ถูก finalize แล้ว เล่นได้) แทน reject →
+         *  อย่านับ success, อย่าย้ายไฟล์เสียงต้นทาง, ออกจากลูปอย่างสะอาด */
+        if (chapterResult && chapterResult.cancelled) {
+          throw new Error('ยกเลิกการเรนเดอร์แล้ว')
+        }
+
+        /** ขั้นที่ 2: concat วิดีโอ intro + chapter → outputFile (เฉพาะ intro ชนิดวิดีโอ)
+         *  เสียง intro merge ไปแล้วใน renderChapter จึงข้ามขั้นนี้ */
+        if (needsConcatStage) {
           event.sender.send('render:progress', {
             jobId, phase: 'intro', progress: Math.min(1, (baseFilePercent + 100 / audioFiles.length * 0.9) / 100),
             message: `รวม intro กับ ${audioFile}`, fileName: audioFile,
           })
           const [wRes, hRes] = String(selectedResolution).split(':')
-          await runFfmpegWithTimeParsing(ffmpegPath, [
-            '-y', '-i', introPath, '-i', chapterOutFile,
+          const introResult = await runFfmpegWithTimeParsing(ffmpegPath, [
+            '-y', '-i', concatIntroPath, '-i', chapterOutFile,
             '-filter_complex',
             `[0:v]scale=${wRes}:${hRes}:force_original_aspect_ratio=decrease,pad=${wRes}:${hRes}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1[v0];` +
             `[1:v]scale=${wRes}:${hRes}:force_original_aspect_ratio=decrease,pad=${wRes}:${hRes}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1[v1];` +
-            `[v0][0:a][v1][1:a]concat=n=2:v=1:a=1[v][a]`,
+            `[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];` +
+            `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];` +
+            `[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]`,
             '-map', '[v]', '-map', '[a]',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(Number.isFinite(effectiveCrf) ? effectiveCrf : 30),
             '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '44100',
@@ -354,6 +434,9 @@ function registerRenderIpc(getMainWindow) {
             registerChild: (child) => childSet.add(child),
             unregisterChild: (child) => childSet.delete(child),
           })
+          if (introResult && introResult.cancelled) {
+            throw new Error('ยกเลิกการเรนเดอร์แล้ว')
+          }
           await safeAttemptAsync('unlink chapter temp (success)', () => fsp.unlink(chapterOutFile))
           tempFilesToCleanup.delete(chapterOutFile)
         }
@@ -376,6 +459,24 @@ function registerRenderIpc(getMainWindow) {
       return summary
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
+      /** User-cancel path — คืน summary (cancelled:true) แทนการ throw เพื่อไม่ให้
+       *  renderer ขึ้น popup "error" ทั้งที่งานถูกบันทึกบางส่วนแล้ว (ตอนที่เสร็จก่อน
+       *  cancel อยู่ใน output, ตอนที่กำลัง encode ถูก ffmpeg `q`-quit finalize ไว้) */
+      const cancelled = message === 'ยกเลิกการเรนเดอร์แล้ว' || !activeRenderJobs.has(jobId)
+      if (cancelled) {
+        const elapsedSeconds = (Date.now() - startedAt) / 1000
+        const summary = {
+          successCount, totalFiles: audioFiles.length, elapsedSeconds,
+          skippedCount, missingCovers, encoder: videoEncodeOption, resolutionLabel,
+          cancelled: true,
+        }
+        event.sender.send('render:progress', {
+          jobId, phase: 'ยกเลิก', progress: 1,
+          message: `ยกเลิกแล้ว — บันทึก ${successCount} ไฟล์ที่เรนเดอร์เสร็จก่อนหน้า`,
+          summary,
+        })
+        return summary
+      }
       await fsp.appendFile(errorLogPath, `ข้อผิดพลาด: ${message}${os.EOL}`, 'utf8')
       throw e
     } finally {

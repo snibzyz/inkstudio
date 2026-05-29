@@ -41,6 +41,10 @@ export type RenderSummary = {
   missingCovers: string[]
   encoder: string
   resolutionLabel: string
+  /** True เมื่อ user กด "หยุด" กลางคัน — ไฟล์ที่เสร็จก่อนหน้าถูกบันทึก และไฟล์ที่
+   *  กำลังเรนเดอร์ถูก ffmpeg `q`-quit finalize ไว้ (ยังเล่นได้). renderer แสดงข้อความ
+   *  "ยกเลิกแล้ว — บันทึก N ไฟล์" แทน popup error */
+  cancelled?: boolean
 }
 
 export type EncodeOptionValue =
