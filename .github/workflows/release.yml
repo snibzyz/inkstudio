@@ -76,15 +76,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Mac builds split per arch — เหตุผลใน comment ของ jobs section ด้านบน
+  # macOS = arm64-only (Apple Silicon, Mac 2020+).
+  # Intel (x64) ถูกตัดออก: ต้องใช้ macos-13 runner (จัดสรรช้า/ขาดแคลน) + ต้องมี job
+  # รวม latest-mac.yml ของสอง arch เป็นไฟล์เดียว (ไม่งั้นแต่ละ arch เขียนทับกัน
+  # ทำ auto-update อีก arch พัง). ถ้าจะเพิ่ม Intel กลับ: คืน matrix 2 arch + เพิ่ม
+  # merge-manifest job. ดู git history ของไฟล์นี้
   package-mac:
     name: Package macOS (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x64
-            runner: macos-13       # Intel runner — installs darwin-x64 ffmpeg
           - arch: arm64
             runner: macos-latest   # Apple Silicon — installs darwin-arm64 ffmpeg
     runs-on: ${{ matrix.runner }}

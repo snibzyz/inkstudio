@@ -146,10 +146,10 @@ GitHub repo: `snibzyz/inkstudio` (ยังไม่สร้าง · ตั้
 ```bash
 pnpm dev                  # Vite (5573) + Electron พร้อมกัน
 pnpm typecheck            # ตรวจ TS — ปัจจุบันผ่าน
-pnpm test                 # vitest run — 151/151 ผ่าน
+pnpm test                 # vitest run — 163/163 ผ่าน (รวม electron/**/*.test.ts)
                           #   coverEditorUtils (35) · electronIpcShim (27) · useRender (23)
                           #   renderConstants (16) · rangeSelectLogic (16) · useHubWorkspace (14)
-                          #   renderSummaryText (6) · renderAudioSelection (6) · useApp/useStudio (8)
+                          #   updateVersion (12) · renderSummaryText (6) · renderAudioSelection (6) · useApp/useStudio (8)
                           # ffmpeg integration (ไม่ใช่ vitest — รันมือ):
                           #   node test/verify-intro.cjs   → 4 เคส intro เล่นได้จริง
                           #   node test/verify-cancel.cjs  → graceful cancel ได้ partial mp4 เล่นได้
@@ -190,6 +190,21 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
 - ห้าม emoji ใน UI source — ใช้ codicon เท่านั้น
 
 ## 12. การเปลี่ยนแปลงล่าสุด
+
+### 2026-05-30 (release + CI)
+
+- **First release v0.1.0 published** → https://github.com/snibzyz/inkstudio/releases/tag/v0.1.0
+  - **Windows**: NSIS Setup + Portable + latest.yml (electron-updater auto-update ใช้ได้)
+  - **macOS**: arm64 (Apple Silicon) dmg + zip + latest-mac.yml (custom mac updater ใช้ได้)
+  - **Intel mac (x64) ตัดออก** — ดู `.github/workflows/release.yml` (ต้องใช้ macos-13 + job รวม manifest)
+- **GitHub repo + CI release pipeline ใช้งานจริงแล้ว**: push tag `vX.Y.Z` → `.github/workflows/release.yml`
+  build win (windows-latest) + mac arm64 (macos-latest) แล้ว attach ขึ้น Releases (ใช้ GITHUB_TOKEN)
+- **Fix CI build**: vendor `.shared/tailwind/tokens.cjs` → `.app/shell/tailwind.tokens.cjs`
+  (เดิม require จาก workspace parent นอก repo → CI/clone เดี่ยว build ไม่ผ่าน). resolveTokens
+  fallback ไป vendored ถ้าไม่มี `.shared`
+- **Auto-update tested**: แยก pure logic → `electron/updateVersion.cjs` (compareSemver/parseFileUrls/
+  pickArchZip) + 12 vitest tests · vitest include เพิ่ม `electron/**/*.test.ts` · verify manifest จริง
+  (size ใน latest.yml/latest-mac.yml ตรงกับ asset ที่ publish เป๊ะ → sha512 consistent)
 
 ### 2026-05-30
 
