@@ -8,14 +8,15 @@ const fs = require('node:fs')
 
 function resolveTokens() {
   const candidates = [
-    '../../../.shared/tailwind/tokens.cjs',          // main checkout
-    '../../../../../../.shared/tailwind/tokens.cjs', // worktree (.claude/worktrees/<id>/)
+    '../../../.shared/tailwind/tokens.cjs',          // workspace main checkout (source of truth)
+    '../../../../../../.shared/tailwind/tokens.cjs', // workspace worktree (.claude/worktrees/<id>/)
+    './tailwind.tokens.cjs',                         // vendored copy — CI / standalone git clone
   ]
   for (const rel of candidates) {
     const abs = path.resolve(__dirname, rel)
     if (fs.existsSync(abs)) return require(abs)
   }
-  throw new Error('Could not locate .shared/tailwind/tokens.cjs from ' + __dirname)
+  throw new Error('Could not locate tailwind tokens (.shared or vendored) from ' + __dirname)
 }
 
 const inkTokens = resolveTokens()

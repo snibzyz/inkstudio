@@ -23,6 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
 const { createLogger } = require('./helpers/logger.cjs');
+const { compareSemver, parseFileUrls, pickArchZip } = require('./updateVersion.cjs');
 
 const log = createLogger('macUpdate');
 
@@ -59,42 +60,12 @@ function getUpdateBaseUrl() {
   return base.replace(/\/?$/, '/');
 }
 
-function parseFileUrls(text) {
-  const filesIdx = text.search(/^files:\s*$/m);
-  if (filesIdx === -1) return [];
-  const after = text.slice(filesIdx).split('\n').slice(1);
-  const urls = [];
-  for (const line of after) {
-    if (/^\S/.test(line)) break;
-    const m = line.match(/^\s*-\s*url:\s*['"]?([^'"\n]+)['"]?\s*$/);
-    if (m) urls.push(m[1].trim());
-  }
-  return urls;
-}
-
-function pickArchZip(urls, arch) {
-  const want = arch === 'arm64' ? /arm64/i : /(x64|x86_64)/i;
-  return urls.find((u) => /\.zip$/i.test(u) && want.test(u) && !/blockmap/i.test(u)) || null;
-}
-
 function latestUrl() {
   return `${getUpdateBaseUrl()}latest-mac.yml`;
 }
 
 function isMacPackaged() {
   return process.platform === 'darwin' && app.isPackaged;
-}
-
-function compareSemver(a, b) {
-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const x = pa[i] || 0;
-    const y = pb[i] || 0;
-    if (x > y) return 1;
-    if (x < y) return -1;
-  }
-  return 0;
 }
 
 function fetchText(url) {
