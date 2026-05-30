@@ -194,9 +194,25 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
 
 ## 12. การเปลี่ยนแปลงล่าสุด
 
-### 2026-05-31 (responsive + e2e + icon)
+### 2026-05-31 (responsive + cover bugfixes + silent update — v0.1.1→v0.1.3)
 
-- **Fix responsive bug — canvas ยุบหายตอนจอเล็ก**: `CoverEditor.tsx` workspace+inspector เดิมเป็น
+- **v0.1.3 — Silent NSIS auto-update**: `autoUpdate.cjs` เดิม `quitAndInstall(false, true)`
+  (`isSilent=false`) → assisted installer (`oneClick:false`) เด้ง wizard ให้คลิก. แก้เป็น
+  `quitAndInstall(true, true)` → ติดตั้งเงียบ (`/S`) + relaunch อัตโนมัติ (pattern เดียวกับ INKCRAW).
+  **สำคัญ**: โค้ดรันใน "เวอร์ชันที่ติดตั้งอยู่" → silent มีผลกับการอัปเดต **จาก v0.1.3 เป็นต้นไป**.
+  `autoInstallOnAppQuit=true` คุม path "ปิดแอปเฉย ๆ" ให้ติดตั้งเงียบตอน quit อยู่แล้ว
+- **บั๊ก: งานหายตอนสลับแท็บ ปก↔คลิป** — `App.tsx` เดิม conditional render → unmount โมดูลที่ไม่ active
+  → fabric canvas ถูก dispose (งานปกหาย) + render folder หาย. แก้: mount ทั้ง 2 โมดูลค้างไว้
+  ซ่อนด้วย CSS (`hidden`) + ส่ง `programActive` คุม keyboard/job lifecycle. render ยกเลิก job
+  เฉพาะตอน unmount จริง (ปิดแอป) ไม่ใช่ตอนสลับแท็บ
+- **บั๊ก: ไม่มี Number layer เมื่อเริ่มจากอัปพื้นหลัง** — แยก `ensureNumberLayer()` ใน
+  `useCoverEditorBgTemplate.ts` → เรียกจาก flow อัปพื้นหลังด้วย (`loadTemplateCustomBackground`
+  สร้าง template เต็ม · `loadBackgroundImageFromDataUrl` รับประกัน Number layer) + **ปุ่ม "+ เลขตอน"**
+  ใน LayersSection (icon Hash) → batch export หา label 'Number' เจอทุก flow
+- **App icon** (v0.1.2): `inkstudio.png` → `logo.ico` (ImageMagick multi-res 16–256px) + `logo.png` +
+  sidebar brand mark codicon cube → `<img logo.png>`. dev mode เห็น icon electron เสมอ — icon จริง
+  เห็นเฉพาะ packaged build
+- **Fix responsive bug — canvas ยุบหายตอนจอเล็ก** (v0.1.1): `CoverEditor.tsx` workspace+inspector เดิมเป็น
   `flex ... xl:flex-row` (ลืม `flex-col` fallback) → ต่ำกว่า xl (1280px) เป็น **row เสมอ** →
   inspector `w-full` กินพื้นที่หมด → canvas เหลือ 0px (hidden). แก้: inspector เป็น **fixed-width
   side panel** (`w-[336px] shrink-0`) ไม่ใช่ responsive-stack → canvas (`flex-1`) ได้พื้นที่ที่เหลือเสมอ
@@ -210,9 +226,9 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
     `_electron.launch` ไม่งั้น main.cjs crash (`Cannot read 'isPackaged'`)
   - scripts: `pnpm test:e2e` (มี `pretest:e2e` = vite build) · `test:e2e:headed`
   - `data-testid` ใหม่: `cover-pasteboard`, `cover-artboard` ใน `CoverCanvas.tsx`
-- **App icon** — convert `inkstudio.png` (512²) → `public/logo.ico` (multi-res 16/24/32/48/64/128/256
-  PNG-in-ICO) + `logo.png` (512²) ผ่าน `build/make-icon.cjs` (ใช้ `@napi-rs/canvas` ที่มีอยู่แล้ว)
-- **Verify**: typecheck ✅ · vitest 163/163 ✅ · vite build ✅ · e2e 3/3 ✅
+  - 6 เทส: artboard fit+16:9 ทุกขนาด · ย่อตามหน้าต่าง · export dialog ในจอ · งานปกไม่หายตอนสลับแท็บ ·
+    ปุ่ม +Number · ตั้งค่าครบ 2 โมดูล + สลับแท็บ 3 รอบไม่หาย
+- **Verify**: typecheck ✅ · vitest 163/163 ✅ · vite build ✅ · e2e 6/6 ✅
 
 ### 2026-05-30 (release + CI)
 
