@@ -1,11 +1,13 @@
 /**
  * autoUpdate — NSIS + electron-updater wiring
  *
- * Flow (Windows NSIS):
+ * Flow (Windows NSIS — silent):
  *   1. start(): app บูตเสร็จ — ส่ง autoUpdater.checkForUpdates() ทุก 30 นาที + รอบแรกหลัง 5 วิ
  *   2. มีเวอร์ชันใหม่ → autoUpdater.downloadUpdate() อัตโนมัติ (ดาวน์โหลด .nsis-blockmap diff ถ้ามี)
  *   3. ดาวน์โหลดเสร็จ → emit app:updateDownloaded ให้ UI แสดงปุ่ม "รีสตาร์ทเพื่ออัพเดต"
- *   4. user กดปุ่มในแอป → ipc app:applyUpdate → autoUpdater.quitAndInstall()
+ *   4. user กดปุ่ม → ipc app:applyUpdate → autoUpdater.quitAndInstall(true, true)
+ *      = ติดตั้ง "เงียบ" (/S, ไม่เด้ง wizard) แล้วเปิดแอปใหม่ให้อัตโนมัติ
+ *   หรือ: ปิดแอปเฉย ๆ → autoInstallOnAppQuit=true ติดตั้ง update ที่ดาวน์โหลดไว้แบบเงียบตอน quit
  *
  * Events ที่ส่งให้ renderer:
  *   app:updateAvailable    { mode: 'nsis', version, current, releaseDate?, releaseNotes? }
@@ -217,7 +219,10 @@ function registerIpc() {
     }
     setImmediate(() => {
       try {
-        autoUpdater.quitAndInstall(false, true)
+        // isSilent=true → รัน NSIS installer ด้วย /S (เงียบ ไม่เด้ง wizard ให้คลิก Next/Install)
+        //   จำเป็นสำหรับ assisted installer (oneClick:false) — ถ้า false จะเด้ง UI
+        // isForceRunAfter=true → เปิดแอปเวอร์ชันใหม่ให้อัตโนมัติหลังติดตั้งเสร็จ
+        autoUpdater.quitAndInstall(true, true)
       } catch (err) {
         log.error('quitAndInstall failed', { error: err && err.message })
       }
