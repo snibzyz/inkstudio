@@ -13,9 +13,14 @@ export function Sidebar() {
       {/* Logo / brand mark */}
       <div
         title="INKSTUDIO"
-        className="mb-1 flex h-10 w-10 items-center justify-center rounded-sm bg-vscode-brand/15 text-vscode-brand ring-1 ring-inset ring-vscode-brand/30"
+        className="mb-1 flex h-10 w-10 items-center justify-center rounded-sm"
       >
-        <Codicon name="symbol-method" size={22} />
+        <img
+          src={`${import.meta.env.BASE_URL}logo.png`}
+          alt="INKSTUDIO"
+          className="h-9 w-9 select-none object-contain"
+          draggable={false}
+        />
       </div>
 
       <div className="my-1 h-px w-7 bg-vscode-border" aria-hidden />
