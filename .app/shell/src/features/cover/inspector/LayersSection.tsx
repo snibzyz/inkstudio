@@ -2,6 +2,7 @@ import { cn, Codicon } from '@shared/ui'
 import {
   Circle as CircleIcon,
   Eye, EyeOff,
+  Hash,
   Image as ImageIcon,
   Layers,
   Palette,
@@ -37,6 +38,7 @@ export function LayersSection({ open, onToggle }: { open: boolean; onToggle: () 
     addTextLayer,
     addRectangleLayer,
     addCircleLayer,
+    addNumberLayer,
     chooseAddImageLayer,
     syncLayers,
     syncSelectionFromCanvas,
@@ -51,6 +53,9 @@ export function LayersSection({ open, onToggle }: { open: boolean; onToggle: () 
       onToggle={onToggle}
       actions={
         <>
+          <IconBtnSm title="เพิ่มเลขตอน (Number) — ใช้กับการทำปกเป็นชุด" disabled={busy} onClick={addNumberLayer}>
+            <Hash className="h-3.5 w-3.5" />
+          </IconBtnSm>
           <IconBtnSm title="เพิ่มข้อความ" disabled={busy} onClick={addTextLayer}>
             <Type className="h-3.5 w-3.5" />
           </IconBtnSm>

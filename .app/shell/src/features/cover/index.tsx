@@ -6,6 +6,6 @@
 
 import { CoverEditor } from './CoverEditor'
 
-export function CoverModule() {
-  return <CoverEditor programActive={true} />
+export function CoverModule({ programActive = true }: { programActive?: boolean }) {
+  return <CoverEditor programActive={programActive} />
 }

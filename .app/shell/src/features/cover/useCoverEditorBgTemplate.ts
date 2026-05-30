@@ -94,29 +94,17 @@ export function useCoverEditorBgTemplate({
     c.requestRenderAll()
   }
 
-  function ensureTemplateTextObjects() {
+  /**
+   * ensureNumberLayer — รับประกันว่ามีเลเยอร์ "Number" (เลขตอน) อยู่บนแคนวาสเสมอ
+   * แยกออกมาเพื่อเรียกได้จากทุก flow: อัปปก, อัปพื้นหลัง, หรือปุ่ม "+ เลขตอน" โดยตรง
+   * คืน id ของเลเยอร์ (หรือ null ถ้าแคนวาสยังไม่พร้อม) — batch export ค้นด้วย label 'Number'
+   */
+  function ensureNumberLayer(): string | null {
     const c = fabricRef.current
-    if (!c) return
-    if (templateTitleIdRef.current && !getFabricObjectById(c, templateTitleIdRef.current)) {
-      templateTitleIdRef.current = null
-    }
+    if (!c) return null
+    // ref ชี้ object ที่ถูกลบไปแล้ว → เคลียร์ให้สร้างใหม่
     if (numberLayerIdRef.current && !getFabricObjectById(c, numberLayerIdRef.current)) {
       numberLayerIdRef.current = null
-    }
-    if (!templateTitleIdRef.current) {
-      const id = newId()
-      const title = new fabric.Textbox(templateTitle, {
-        left: TEMPLATE_TEXT_CENTER_X, top: TEMPLATE_TITLE_TOP, originX: 'center', originY: 'center',
-        width: TEMPLATE_TITLE_WIDTH, textAlign: 'center', fontFamily: templateFontChoice,
-        fontSize: 54, fill: '#ffffff', opacity: 1,
-      })
-      ;(title as fabric.Textbox & { inkideaLayerId?: string; inkideaLayerKind?: string; inkideaLayerLabel?: string }).inkideaLayerId = id
-      ;(title as fabric.Textbox & { inkideaLayerKind?: string }).inkideaLayerKind = 'text'
-      ;(title as fabric.Textbox & { inkideaLayerLabel?: string }).inkideaLayerLabel = 'ชื่อเรื่อง'
-      templateTitleIdRef.current = id
-      c.add(title)
-      tightenTextboxWidth(title)
-      stampInkideaTransformDefaults(title)
     }
     if (!numberLayerIdRef.current) {
       const id = newId()
@@ -133,16 +121,44 @@ export function useCoverEditorBgTemplate({
       tightenTextboxWidth(numberText)
       stampInkideaTransformDefaults(numberText)
     }
+    const numberObj = getFabricObjectById<fabric.Textbox>(c, numberLayerIdRef.current)
+    if (numberObj) {
+      numberObj.set({ text: templateEpisode, fontFamily: templateFontChoice })
+      tightenTextboxWidth(numberObj)
+    }
+    c.requestRenderAll()
+    syncLayers()
+    return numberLayerIdRef.current
+  }
+
+  function ensureTemplateTextObjects() {
+    const c = fabricRef.current
+    if (!c) return
+    if (templateTitleIdRef.current && !getFabricObjectById(c, templateTitleIdRef.current)) {
+      templateTitleIdRef.current = null
+    }
+    if (!templateTitleIdRef.current) {
+      const id = newId()
+      const title = new fabric.Textbox(templateTitle, {
+        left: TEMPLATE_TEXT_CENTER_X, top: TEMPLATE_TITLE_TOP, originX: 'center', originY: 'center',
+        width: TEMPLATE_TITLE_WIDTH, textAlign: 'center', fontFamily: templateFontChoice,
+        fontSize: 54, fill: '#ffffff', opacity: 1,
+      })
+      ;(title as fabric.Textbox & { inkideaLayerId?: string; inkideaLayerKind?: string; inkideaLayerLabel?: string }).inkideaLayerId = id
+      ;(title as fabric.Textbox & { inkideaLayerKind?: string }).inkideaLayerKind = 'text'
+      ;(title as fabric.Textbox & { inkideaLayerLabel?: string }).inkideaLayerLabel = 'ชื่อเรื่อง'
+      templateTitleIdRef.current = id
+      c.add(title)
+      tightenTextboxWidth(title)
+      stampInkideaTransformDefaults(title)
+    }
     const titleObj = getFabricObjectById<fabric.Textbox>(fabricRef.current, templateTitleIdRef.current)
     if (titleObj) {
       titleObj.set({ text: templateTitle, fontFamily: templateFontChoice })
       tightenTextboxWidth(titleObj)
     }
-    const numberObj = getFabricObjectById<fabric.Textbox>(fabricRef.current, numberLayerIdRef.current)
-    if (numberObj) {
-      numberObj.set({ text: templateEpisode, fontFamily: templateFontChoice })
-      tightenTextboxWidth(numberObj)
-    }
+    // เลขตอนสร้าง/อัปเดตผ่าน helper เดียวกับ flow อื่น ๆ
+    ensureNumberLayer()
     c.requestRenderAll()
     syncLayers()
   }
@@ -219,6 +235,8 @@ export function useCoverEditorBgTemplate({
     setError(null)
     try {
       await placeBackgroundImage(dataUrl, { applyDefaults: false, label: 'พื้นหลัง (รูปภาพ)' })
+      // รับประกันว่ามีเลขตอนเสมอ — ไม่ว่าจะเข้าทางอัปปกหรืออัปพื้นหลัง
+      ensureNumberLayer()
     } catch (e) {
       setError(`โหลดภาพพื้นหลังไม่สำเร็จ: ${formatLoadError(e)}`)
     }
@@ -319,6 +337,11 @@ export function useCoverEditorBgTemplate({
         dataUrl = await imageSourceToDataUrlAsync(source, electron)
       }
       await placeBackgroundImage(dataUrl, { applyDefaults: false, label: 'พื้นหลัง (อัปโหลดเอง)' })
+      // อัปพื้นหลังก็ต้องได้ template (ชื่อเรื่อง + เลขตอน) เหมือนอัปปก —
+      // เผื่อผู้ใช้ไม่อยากใช้ฟังก์ชันอัปปก แต่ยังต้องทำปกเป็นชุดด้วยเลขตอน {n}
+      ensureTemplateTextObjects()
+      snapTemplateTitleAndEpisodeLayout()
+      setTemplateMode(true)
     } catch (e) {
       setError(`โหลดภาพพื้นหลังเทมเพลตไม่สำเร็จ: ${formatLoadError(e)}`)
     }
@@ -439,7 +462,7 @@ export function useCoverEditorBgTemplate({
     templateFontChoice, setTemplateFontChoice,
     localFonts, localFontsSupported, fontsBusy, fontChoices,
     templateCoverIdRef, templateTitleIdRef, templateCreditIdRef, templateBgRefreshTimerRef,
-    clearTemplateObjects, ensureTemplateTextObjects, snapTemplateTitleAndEpisodeLayout,
+    clearTemplateObjects, ensureTemplateTextObjects, ensureNumberLayer, snapTemplateTitleAndEpisodeLayout,
     chooseBackgroundImage, clearBackgroundImage, loadBackgroundImageFromDataUrl,
     chooseTemplateCoverImageForCrop,
     loadTemplateCoverImage, loadTemplateCoverImageFromDataUrl, loadTemplateCustomBackground, loadTemplateCreditImage,

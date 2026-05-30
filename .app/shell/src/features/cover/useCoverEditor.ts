@@ -632,6 +632,22 @@ export function useCoverEditor(programActive: boolean) {
     syncLayers()
   }
 
+  /** เพิ่ม/โฟกัสเลเยอร์เลขตอน "Number" ด้วยมือ (ปุ่ม + ในแผงเลเยอร์)
+   *  ถ้ามีอยู่แล้ว = เลือกเลเยอร์เดิม, ถ้ายังไม่มี = สร้างใหม่ตรงตำแหน่ง template */
+  function addNumberLayer() {
+    const id = tmpl.ensureNumberLayer()
+    if (!id) return
+    const c = fabricRef.current
+    if (!c) return
+    const obj = c.getObjects().find((o) => (o as any).inkideaLayerId === id)
+    if (obj) {
+      c.setActiveObject(obj)
+      c.requestRenderAll()
+      syncSelectionFromCanvas()
+    }
+    scheduleHistoryCommit()
+  }
+
   function deleteSelectedLayer() {
     const c = fabricRef.current
     if (!c || !selectedLayerId) return
@@ -950,7 +966,7 @@ export function useCoverEditor(programActive: boolean) {
     applyLayerAngle, resetSelectedLayerTransform,
     bringForwardSelected, sendBackwardSelected, duplicateSelected, resetView,
     chooseAddImageLayer, addImageLayerFromDataUrl,
-    addTextLayer, addRectangleLayer, addCircleLayer, deleteSelectedLayer,
+    addTextLayer, addRectangleLayer, addCircleLayer, addNumberLayer, deleteSelectedLayer,
     saveCoverTemplate, loadCoverTemplate, loadCoverTemplateFromProject, revealCoverTemplateFolder,
     getFabricObjectById: (id: string | null) => getFabricObjectById(fabricRef.current, id),
     // Template + bg image (from sub-hook)

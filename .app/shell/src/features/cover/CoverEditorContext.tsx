@@ -132,8 +132,10 @@ export type CoverEditorCtxValue = {
   addTextLayer: () => void
   addRectangleLayer: () => void
   addCircleLayer: () => void
+  addNumberLayer: () => void
   deleteSelectedLayer: () => void
   ensureTemplateTextObjects: () => void
+  ensureNumberLayer: () => string | null
   snapTemplateTitleAndEpisodeLayout: () => void
   clearTemplateObjects: () => void
   adjustments: LayerAdjustments

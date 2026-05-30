@@ -5,6 +5,6 @@
 
 import { RenderTab } from './RenderTab'
 
-export function RenderModule() {
-  return <RenderTab programActive={true} />
+export function RenderModule({ programActive = true }: { programActive?: boolean }) {
+  return <RenderTab programActive={programActive} />
 }

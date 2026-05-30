@@ -129,3 +129,32 @@ test('export dialog stays fully on-screen in the smallest window', async () => {
   await page.screenshot({ path: path.join(SHOTS_DIR, 'modal-export-1024x680.png') })
   await page.keyboard.press('Escape')
 })
+
+test('cover work survives switching to the clip tab and back', async () => {
+  await setWindowSize(1280, 820)
+
+  // Add a text layer (no file dialog needed) so there is real work on the canvas.
+  await page.getByRole('button', { name: 'เพิ่มข้อความ' }).first().click()
+  await expect(page.getByText('เลเยอร์ข้อความ').first()).toBeVisible()
+
+  // Switch to the clip module then back to cover via the left activity bar.
+  const nav = page.getByRole('navigation', { name: 'โมดูลของ INKSTUDIO' })
+  await nav.getByRole('tab', { name: /คลิป/ }).click()
+  await page.waitForTimeout(300)
+  await nav.getByRole('tab', { name: /ปก/ }).click()
+  await page.waitForTimeout(400)
+
+  // The layer must still exist — modules stay mounted, so nothing is lost.
+  await expect(page.getByText('เลเยอร์ข้อความ').first()).toBeVisible()
+  // And the canvas is still rendered at a real size (not collapsed/disposed).
+  const ab = await page.getByTestId('cover-artboard').boundingBox()
+  expect(ab?.width ?? 0, 'artboard still rendered after round-trip').toBeGreaterThan(120)
+})
+
+test('the + number-layer button adds a "Number" layer', async () => {
+  await setWindowSize(1280, 820)
+  // The "Number" episode layer is what batch export looks for — make sure the manual
+  // add button creates it (same helper the upload-background flow now calls).
+  await page.getByRole('button', { name: /เพิ่มเลขตอน/ }).first().click()
+  await expect(page.getByText('Number', { exact: true }).first()).toBeVisible()
+})
