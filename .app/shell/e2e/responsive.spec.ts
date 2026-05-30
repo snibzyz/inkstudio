@@ -158,3 +158,52 @@ test('the + number-layer button adds a "Number" layer', async () => {
   await page.getByRole('button', { name: /เพิ่มเลขตอน/ }).first().click()
   await expect(page.getByText('Number', { exact: true }).first()).toBeVisible()
 })
+
+test('full settings survive several cover↔clip tab round-trips', async () => {
+  await setWindowSize(1366, 900)
+  const nav = page.getByRole('navigation', { name: 'โมดูลของ INKSTUDIO' })
+
+  // ── Configure the COVER tab: title, episode, and two real layers ──
+  await nav.getByRole('tab', { name: /ปก/ }).click()
+  const titleInput = page.getByLabel('ชื่อเรื่อง')
+  await titleInput.fill('เรื่องทดสอบสลับแท็บ')
+  const episodeInput = page.getByLabel('เลขตอน (เช่น 1, 1-50)')
+  await episodeInput.fill('5-40')
+  await episodeInput.blur()
+  await page.getByRole('button', { name: 'เพิ่มข้อความ' }).first().click()
+  await page.getByRole('button', { name: /เพิ่มเลขตอน/ }).first().click()
+  await expect(page.getByText('เลเยอร์ข้อความ').first()).toBeVisible()
+  await expect(page.getByText('Number', { exact: true }).first()).toBeVisible()
+
+  // ── Configure the CLIP tab: a title prefix (persisted store field) ──
+  await nav.getByRole('tab', { name: /คลิป/ }).click()
+  const prefixInput = page.getByPlaceholder('เว้นว่าง = ใช้ชื่อเดียวกับไฟล์เสียง')
+  await prefixInput.waitFor({ state: 'visible', timeout: 10_000 })
+  await prefixInput.fill('ตอนที่ ')
+  await expect(prefixInput).toHaveValue('ตอนที่ ')
+
+  // ── Bounce between the two tabs several times ──
+  for (let i = 0; i < 3; i++) {
+    await nav.getByRole('tab', { name: /ปก/ }).click()
+    await page.waitForTimeout(200)
+    await nav.getByRole('tab', { name: /คลิป/ }).click()
+    await page.waitForTimeout(200)
+  }
+
+  // ── COVER settings must all still be there ──
+  await nav.getByRole('tab', { name: /ปก/ }).click()
+  await page.waitForTimeout(300)
+  await expect(page.getByLabel('ชื่อเรื่อง')).toHaveValue('เรื่องทดสอบสลับแท็บ')
+  await expect(page.getByLabel('เลขตอน (เช่น 1, 1-50)')).toHaveValue('005-040')
+  await expect(page.getByText('เลเยอร์ข้อความ').first()).toBeVisible()
+  await expect(page.getByText('Number', { exact: true }).first()).toBeVisible()
+  const ab = await page.getByTestId('cover-artboard').boundingBox()
+  expect(ab?.width ?? 0, 'artboard still alive after round-trips').toBeGreaterThan(120)
+
+  // ── CLIP settings must all still be there ──
+  await nav.getByRole('tab', { name: /คลิป/ }).click()
+  await page.waitForTimeout(300)
+  await expect(page.getByPlaceholder('เว้นว่าง = ใช้ชื่อเดียวกับไฟล์เสียง')).toHaveValue('ตอนที่ ')
+
+  await page.screenshot({ path: path.join(SHOTS_DIR, 'tab-roundtrip-clip.png') })
+})
