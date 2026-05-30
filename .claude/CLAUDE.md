@@ -135,7 +135,8 @@ features/
 2. มี version ใหม่ → emit `app:updateAvailable` + auto download (autoDownload=true)
 3. ระหว่าง download → emit `app:updateProgress` (percent + bytes + speed)
 4. download เสร็จ → emit `app:updateDownloaded`
-5. user กดปุ่ม / app quit → `quitAndInstall()` → NSIS uninstall + reinstall
+5. user กดปุ่ม / app quit → `quitAndInstall(true, true)` → ติดตั้ง **เงียบ** (`/S`) + relaunch อัตโนมัติ
+   (silent มีผลกับการอัปเดตจาก v0.1.3 เป็นต้นไป — โค้ดรันในเวอร์ชันที่ติดตั้งอยู่)
 
 **Diff updates**: NSIS + electron-updater รองรับ `differentialPackage` — ดาวน์โหลดเฉพาะ block ที่เปลี่ยน
 
