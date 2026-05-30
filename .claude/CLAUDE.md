@@ -147,6 +147,8 @@ GitHub repo: `snibzyz/inkstudio` (ยังไม่สร้าง · ตั้
 pnpm dev                  # Vite (5573) + Electron พร้อมกัน
 pnpm typecheck            # ตรวจ TS — ปัจจุบันผ่าน
 pnpm test                 # vitest run — 163/163 ผ่าน (รวม electron/**/*.test.ts)
+pnpm test:e2e             # playwright (build dist ก่อน) — 3/3 ผ่าน: responsive canvas + modal
+                          #   e2e/responsive.spec.ts → screenshot ลง e2e/__screenshots__/
                           #   coverEditorUtils (35) · electronIpcShim (27) · useRender (23)
                           #   renderConstants (16) · rangeSelectLogic (16) · useHubWorkspace (14)
                           #   updateVersion (12) · renderSummaryText (6) · renderAudioSelection (6) · useApp/useStudio (8)
@@ -190,6 +192,26 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
 - ห้าม emoji ใน UI source — ใช้ codicon เท่านั้น
 
 ## 12. การเปลี่ยนแปลงล่าสุด
+
+### 2026-05-31 (responsive + e2e + icon)
+
+- **Fix responsive bug — canvas ยุบหายตอนจอเล็ก**: `CoverEditor.tsx` workspace+inspector เดิมเป็น
+  `flex ... xl:flex-row` (ลืม `flex-col` fallback) → ต่ำกว่า xl (1280px) เป็น **row เสมอ** →
+  inspector `w-full` กินพื้นที่หมด → canvas เหลือ 0px (hidden). แก้: inspector เป็น **fixed-width
+  side panel** (`w-[336px] shrink-0`) ไม่ใช่ responsive-stack → canvas (`flex-1`) ได้พื้นที่ที่เหลือเสมอ
+  → fabric ResizeObserver + `fitCanvasToHost` ย่อ artboard ตาม (คง 16:9 1280×720)
+- **Inspector พับได้ (collapsible)** — ปุ่ม `»`/`«` ที่หัวแผง · เก็บ state ลง localStorage
+  (`inkstudio-cover-inspector-collapsed-v1`) · พับแล้วเหลือแถบ 36px → คืนพื้นที่ให้ canvas บนจอเล็ก
+- **Playwright e2e (ของใหม่)** — `@playwright/test` + `playwright.config.ts` (serial, single-instance
+  lock) + `e2e/responsive.spec.ts` (3 เทส): artboard fit+16:9 ทุกขนาด (1600→1024) ·
+  ย่อตามหน้าต่าง · export dialog อยู่ในจอครบ. เขียน screenshot ลง `e2e/__screenshots__/`
+  - **สำคัญ**: harness ตั้ง `ELECTRON_RUN_AS_NODE=1` → ต้อง `delete env.ELECTRON_RUN_AS_NODE` ตอน
+    `_electron.launch` ไม่งั้น main.cjs crash (`Cannot read 'isPackaged'`)
+  - scripts: `pnpm test:e2e` (มี `pretest:e2e` = vite build) · `test:e2e:headed`
+  - `data-testid` ใหม่: `cover-pasteboard`, `cover-artboard` ใน `CoverCanvas.tsx`
+- **App icon** — convert `inkstudio.png` (512²) → `public/logo.ico` (multi-res 16/24/32/48/64/128/256
+  PNG-in-ICO) + `logo.png` (512²) ผ่าน `build/make-icon.cjs` (ใช้ `@napi-rs/canvas` ที่มีอยู่แล้ว)
+- **Verify**: typecheck ✅ · vitest 163/163 ✅ · vite build ✅ · e2e 3/3 ✅
 
 ### 2026-05-30 (release + CI)
 

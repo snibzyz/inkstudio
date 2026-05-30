@@ -1,6 +1,6 @@
 {
   "name": "@inkstudio/desktop-shell",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "INKSTUDIO desktop shell — Electron + React renderer",
   "author": {
@@ -17,6 +17,9 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "pretest:e2e": "vite build",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
     "package:win": "pnpm build && electron-builder --win nsis portable",
     "publish:win": "pnpm build && electron-builder --win nsis portable --publish always",
     "package:mac": "pnpm build && electron-builder --mac dmg",
@@ -35,6 +38,7 @@
   },
   "devDependencies": {
     "@napi-rs/canvas": "^1.0.0",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^20.16.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

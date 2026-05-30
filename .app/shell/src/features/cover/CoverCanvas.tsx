@@ -145,6 +145,7 @@ export function CoverCanvas() {
           at exact 16:9 (1280×720) scaled, so anything past artboard is clipped naturally. */}
       <div
         ref={canvasHostRef}
+        data-testid="cover-pasteboard"
         className={cn(
           'relative min-h-0 w-full min-w-0 flex-1 overflow-hidden',
           zonePasteboard,
@@ -171,6 +172,7 @@ export function CoverCanvas() {
             paints the box-shadow that visually marks the YouTube cover. */}
         <div
           ref={artboardFrameRef}
+          data-testid="cover-artboard"
           className="pointer-events-none absolute overflow-hidden shadow-cover-artboard"
         >
           {isEmpty || dragHover ? (

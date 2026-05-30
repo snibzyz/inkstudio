@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AppButton, cn, zoneRightRail } from '@shared/ui'
-import { ExternalLink, FolderOpen, Save, Upload } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, ExternalLink, FolderOpen, Save, Upload } from 'lucide-react'
 import type * as fabric from 'fabric'
 import type { InkLayerKind } from './coverEditorTypes'
 import { useCoverEditorCtx } from './CoverEditorContext'
@@ -13,6 +13,7 @@ import { TemplateSection } from './inspector/TemplateSection'
 import { BackgroundSection } from './inspector/BackgroundSection'
 
 const STORAGE_KEY = 'inkidea-cover-inspector-sections-v1'
+const COLLAPSE_KEY = 'inkstudio-cover-inspector-collapsed-v1'
 
 type SectionId = 'layers' | 'props' | 'adjust' | 'transform' | 'template' | 'bg'
 
@@ -46,10 +47,17 @@ export function CoverInspectorPanel() {
     revealCoverTemplateFolder,
   } = useCoverEditorCtx()
   const [openMap, setOpenMap] = useState<Record<SectionId, boolean>>(() => readStoredOpen())
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+  })
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(openMap)) } catch { /* ignore */ }
   }, [openMap])
+
+  useEffect(() => {
+    try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0') } catch { /* ignore */ }
+  }, [collapsed])
 
   const toggle = (id: SectionId) => setOpenMap((prev) => ({ ...prev, [id]: !prev[id] }))
 
@@ -68,16 +76,43 @@ export function CoverInspectorPanel() {
     })
   }, [selectedKind])
 
+  if (collapsed) {
+    return (
+      <aside
+        className={cn('flex h-full w-9 shrink-0 flex-col items-center gap-1 py-2', zoneRightRail)}
+        aria-label="แผงควบคุมปก (พับไว้)"
+      >
+        <button
+          type="button"
+          title="แสดงแผงควบคุม"
+          aria-label="แสดงแผงควบคุม"
+          onClick={() => setCollapsed(false)}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-vscode-fg-dim transition-colors hover:bg-vscode-list-hover hover:text-vscode-fg"
+        >
+          <ChevronsLeft className="h-4 w-4" aria-hidden />
+        </button>
+      </aside>
+    )
+  }
+
   return (
     <aside
       className={cn(
-        'order-3 flex max-h-[min(88vh,1080px)] min-h-0 w-full min-w-0 flex-col overflow-y-auto overflow-x-hidden',
-        'xl:order-3 xl:max-h-none xl:w-[336px] xl:max-w-[336px] xl:shrink-0',
+        'flex h-full min-h-0 w-[336px] min-w-[336px] max-w-[336px] shrink-0 flex-col overflow-y-auto overflow-x-hidden',
         zoneRightRail
       )}
       aria-label="แผงควบคุมปก"
     >
       <div className="flex shrink-0 items-center gap-1 border-b border-vscode-border bg-vscode-section-header-bg/60 px-2 py-1.5">
+        <button
+          type="button"
+          title="พับแผงควบคุม"
+          aria-label="พับแผงควบคุม"
+          onClick={() => setCollapsed(true)}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-vscode-fg-dim transition-colors hover:bg-vscode-list-hover hover:text-vscode-fg"
+        >
+          <ChevronsRight className="h-4 w-4" aria-hidden />
+        </button>
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-vscode-muted">เทมเพลต</span>
         <div className="ml-auto flex items-center gap-1">
           <AppButton tone="primary" disabled={busy} onPress={saveCoverTemplate}

@@ -12,3 +12,9 @@ output/
 
 # test scratch data (รูปปกทดสอบ) — เก็บเฉพาะ verify-*.cjs scripts
 test/*.png
+
+# Playwright e2e output (generated per-run) — เก็บแค่ spec + config
+.app/shell/e2e/__screenshots__/
+.app/shell/e2e/.artifacts/
+.app/shell/playwright-report/
+.app/shell/test-results/

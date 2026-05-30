@@ -287,7 +287,7 @@ export function CoverEditor({ programActive = true }: CoverEditorProps) {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 min-w-0 flex-1 divide-x divide-vscode-border xl:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 divide-x divide-vscode-border">
           <CoverCanvas />
           <CoverInspectorPanel />
         </div>
