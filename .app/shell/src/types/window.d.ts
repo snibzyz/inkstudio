@@ -245,7 +245,8 @@ declare global {
         onAudioFolderChanged?: (handler: (payload: AudioFolderChangedPayload) => void) => () => void
         startBatch: (args: {
           jobId: string
-          coverPath?: string
+          /** รูปปกเดียว (โหมด single cover) — ชื่อคีย์ต้องตรงกับ backend = `imagePath` */
+          imagePath?: string
           coverFolder?: string
           useMultipleCovers: boolean
           audioFolder: string

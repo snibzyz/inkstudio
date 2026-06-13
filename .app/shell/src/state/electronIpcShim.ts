@@ -147,7 +147,10 @@ export function installElectronIpcShim() {
       const intro = args.introPath || args.introClipPath
       return r.startBatch({
         jobId: args.jobId,
-        coverPath: args.useMultipleCovers ? undefined : args.imagePath,
+        /** backend (render:start-batch-cover) อ่านคีย์ `imagePath` — เดิม shim ส่งเป็น
+         *  `coverPath` ทำให้โหมดปกเดียว (single cover) ได้ imagePath=undefined แล้ว throw
+         *  "กรุณาเลือกภาพปก" เสมอ. ต้องตรงกับ contract ของ backend = `imagePath` */
+        imagePath: args.useMultipleCovers ? undefined : args.imagePath,
         coverFolder: args.useMultipleCovers ? args.coverFolder : undefined,
         useMultipleCovers: args.useMultipleCovers,
         audioFolder: args.audioFolder,

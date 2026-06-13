@@ -194,6 +194,25 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
 
 ## 12. การเปลี่ยนแปลงล่าสุด
 
+### 2026-06-13 (fix: โหมดปกเดียวเรนเดอร์ไม่ได้ — v0.1.4)
+
+- **บั๊ก: โหมดเรนเดอร์ "ปกเดียวกันทุกตอน" (single cover) สร้างวิดีโอไม่ได้** — ส่วนโหมด "ปกแยกแต่ละตอน"
+  (หลายปก) ใช้ได้ปกติ. สาเหตุ = **ชื่อคีย์ใน IPC payload ไม่ตรงกัน** ไม่ใช่ปัญหา ffmpeg/การจับคู่เลขตอน:
+  - backend `render:start-batch-cover` ([render.cjs](../.app/shell/electron/ipc/render.cjs)) อ่านคีย์ `imagePath`
+    (`if (!useMultipleCovers && !imagePath) throw 'กรุณาเลือกภาพปก'`)
+  - แต่ shim `startBatchCoverRender` ([electronIpcShim.ts](../.app/shell/src/state/electronIpcShim.ts)) ส่งรูปปกเดียว
+    ภายใต้คีย์ `coverPath` → backend ได้ `imagePath === undefined` → throw "กรุณาเลือกภาพปก" ทุกครั้ง
+    ทั้งที่ผู้ใช้เลือกรูปแล้ว. โหมดหลายปกส่ง `coverFolder` (ชื่อตรง) เลยรอด
+  - **แก้**: shim ส่งคีย์ `imagePath` (canonical — ตรงกับ `RenderBatchArgs` + backend) · type `startBatch`
+    ใน `window.d.ts` แก้ `coverPath?` → `imagePath?` · ไม่แตะ backend (อ่าน `imagePath` ถูกอยู่แล้ว)
+  - **test เดิมล็อกบั๊กไว้**: `electronIpcShim.test.ts` เคย `expect(arg.coverPath).toBe(...)` (เขียนตาม shim
+    ไม่ได้เทียบ backend contract) → แก้ให้ assert `imagePath`
+- **Verify**: typecheck ✅ · vitest 163/163 ✅ · vite build ✅ · **e2e render mp4 เล่นได้จริง 2/2** ผ่าน
+  `test/verify-single-cover.cjs` (เรียก handler ตัวจริง + ffmpeg จริง · รูปปกชื่อไทยไม่มีเลข พิสูจน์ว่า
+  ชื่อไฟล์ไม่เกี่ยวในโหมดปกเดียว · ทดสอบ before/after ของบั๊ก)
+- **หมายเหตุค้าง** (ยังไม่แก้ใน release นี้): shim แปลง `overwriteMode: 'ask' → 'skip'` เสมอ →
+  เรนเดอร์ทับไฟล์เดิมไม่ได้ (ข้ามเงียบ ๆ) + dialog ถามทับใน backend กลายเป็น dead code
+
 ### 2026-05-31 (responsive + cover bugfixes + silent update — v0.1.1→v0.1.3)
 
 - **v0.1.3 — Silent NSIS auto-update**: `autoUpdate.cjs` เดิม `quitAndInstall(false, true)`

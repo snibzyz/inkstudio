@@ -213,7 +213,8 @@ describe('render IPC routing', () => {
     expect(mock.render.startBatch).toHaveBeenCalledTimes(1)
     const arg = mock.render.startBatch.mock.calls[0][0] as Record<string, unknown>
     expect(arg.jobId).toBe('j1')
-    expect(arg.coverPath).toBe('Z:/c.png')
+    /** โหมดปกเดียว: ต้องส่งคีย์ `imagePath` (ตรงกับที่ backend อ่าน) ไม่ใช่ `coverPath` */
+    expect(arg.imagePath).toBe('Z:/c.png')
     expect(arg.coverFolder).toBeUndefined()
     expect(arg.introClipPath).toBe('Z:/intro.mp4')
     expect(arg.fps).toBe(1)
@@ -221,7 +222,7 @@ describe('render IPC routing', () => {
     expect(arg.overwriteMode).toBe('skip') // 'ask' → 'skip'
   })
 
-  it('useMultipleCovers=true → ใช้ coverFolder + ไม่ส่ง coverPath', async () => {
+  it('useMultipleCovers=true → ใช้ coverFolder + ไม่ส่ง imagePath', async () => {
     mock.render.startBatch.mockResolvedValue({
       successCount: 0, totalFiles: 0, elapsedSeconds: 0,
       skippedCount: 0, missingCovers: [], encoder: '', resolutionLabel: '144p',
@@ -243,7 +244,7 @@ describe('render IPC routing', () => {
       selectedAudioFiles: [],
     })
     const arg = mock.render.startBatch.mock.calls[0][0] as Record<string, unknown>
-    expect(arg.coverPath).toBeUndefined()
+    expect(arg.imagePath).toBeUndefined()
     expect(arg.coverFolder).toBe('/covers')
   })
 
