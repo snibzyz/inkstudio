@@ -319,3 +319,13 @@ pnpm publish:win          # + publish ไป GitHub Releases (ต้อง GH_TO
 - เปลี่ยน electron-builder จาก portable → NSIS + electron-updater
 - ลบ `portableUpdate.cjs` (เก่า) · เขียน `autoUpdate.cjs` ใหม่บน electron-updater
 - เขียน README.md (Thai user doc) + `.app/docs/architecture.md` (technical)
+
+<!-- ink-vault-pointer -->
+## INK family — cross-project knowledge
+
+แอปนี้เป็นส่วนหนึ่งของตระกูล INK. **ภาพรวม + ความเชื่อมโยงข้ามแอป** อยู่ใน Obsidian vault กลาง (path เต็มใช้ได้จากทุก worktree บนเครื่องนี้):
+- `Z:/Mega Project/INK Vault/Home.md` — แผนผังครอบครัว INK (pipeline: INKCRAW→INKMAGIC/INKIDEA→INKTTS→INKREALM)
+- `Z:/Mega Project/INK Vault/Apps/INKSTUDIO.md` — ภาพรวมแอปนี้ · `INK Vault/Topics/` — Shared System / Design / Electron / Infra
+- docs structure มาตรฐาน (.claude/.docs/.implement ทุกแอป) → `Z:/Mega Project/.shared/docs-structure.md`
+
+เมื่อต้องเข้าใจภาพใหญ่ หรือทำงานคร่อมหลายแอป → อ่าน vault ก่อนลงมือ.
