@@ -1,5 +1,5 @@
 /**
- * tailwind.tokens.cjs — VENDORED copy ของ Z:/Mega Project/.shared/tailwind/tokens.cjs
+ * tailwind.tokens.cjs — VENDORED copy ของ E:/Mega Project/.shared/tailwind/tokens.cjs
  *
  * ทำไมต้อง vendor: tailwind.config.js เดิม require `.shared/tailwind/tokens.cjs` ใน
  * workspace parent ซึ่งอยู่นอก git repo ของ INKSTUDIO → ตอน CI/clone เดี่ยว ๆ จะหา
